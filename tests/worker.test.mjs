@@ -43,7 +43,18 @@ db.exec(readFileSync(join(root, "db", "seed.sql"), "utf8"));
 const pending = [];
 const env = {
   DB: makeD1(db),
-  ASSETS: { fetch: async () => new Response("<html>static</html>", { headers: { "Content-Type": "text/html" } }) },
+  // 模拟真实 Pages 静态资源：只对预先存在的文件返回 200，其他返回 404
+  ASSETS: {
+    fetch: async (req) => {
+      const pathname = new URL(req.url).pathname;
+      // 预先打包的静态 media 文件不存在（测试里没有放），其他静态路径也一律返回 404
+      // 真实 Pages 会扫描 public/ 目录，不存在的返回 404
+      if (pathname.startsWith("/media/")) {
+        return new Response("Not Found", { status: 404 });
+      }
+      return new Response("<html>static</html>", { headers: { "Content-Type": "text/html" } });
+    },
+  },
   CODE_PEPPER: "test-pepper-do-not-use-in-prod",
 };
 const ctx = { waitUntil: (p) => pending.push(p) };

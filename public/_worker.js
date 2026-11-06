@@ -1306,13 +1306,13 @@ function adminContentBody() {
     </div>
     <label class="a-field"><span>摘要（列表与搜索结果用）</span><textarea name="excerpt" rows="2" maxlength="300" placeholder="一句话说明这篇内容解决什么问题"></textarea></label>
     <label class="a-field"><span>正文（Markdown）*</span><textarea name="body" rows="16" class="a-code-input" placeholder="## 小节标题&#10;&#10;正文段落…"></textarea></label>
-    <div class="a-media-bar">
+    <div class="a-media-bar" data-r2-only>
       <span>正文配图</span>
       <input type="file" id="content-image" accept="image/png,image/jpeg,image/webp,image/gif">
       <button class="btn btn-ghost btn-sm" type="button" id="content-image-upload">上传并插入</button>
       <span class="a-hint" id="content-image-hint">支持 JPG / PNG / WebP / GIF，5 MB 以内。</span>
     </div>
-    <div class="a-media-bar">
+    <div class="a-media-bar" data-r2-only>
       <span>课程附件</span>
       <input type="file" id="content-attach">
       <button class="btn btn-ghost btn-sm" type="button" id="content-attach-upload">上传附件</button>
@@ -1411,7 +1411,7 @@ function adminResourcesBody() {
     <div class="a-form-grid">
       <label class="a-field"><span>资料名称 *</span><input name="title" maxlength="120" required placeholder="例如：独立站 90 天执行清单"></label>
       <label class="a-field"><span>资料分类</span><select name="category_id" id="resource-category"></select></label>
-      <label class="a-field"><span>R2 文件路径 *</span><input name="file_key" maxlength="200" required placeholder="例如：resources/90-day-checklist.pdf"></label>
+      <label class="a-field" data-r2-only><span>R2 文件路径</span><input name="file_key" maxlength="200" placeholder="例如：resources/90-day-checklist.pdf（配置 R2 后自动填充）"></label>
       <label class="a-field"><span>下载文件名 *</span><input name="file_name" maxlength="200" required placeholder="例如：chunge-90-day-checklist.pdf"></label>
       <label class="a-field"><span>文件类型</span><input name="file_type" maxlength="12" value="pdf" placeholder="pdf / xlsx / docx / zip"></label>
       <label class="a-field"><span>文件大小（字节）</span><input name="file_size" type="number" min="0" value="0"></label>
@@ -1421,7 +1421,7 @@ function adminResourcesBody() {
       <label class="a-field"><span>状态</span><select name="status"><option value="draft">草稿</option><option value="published">发布</option><option value="archived">下架</option></select></label>
     </div>
     <label class="a-field"><span>资料说明</span><textarea name="description" rows="3" maxlength="500" placeholder="这份资料能帮会员解决什么问题"></textarea></label>
-    <div class="a-upload" id="resource-upload-box" hidden>
+    <div class="a-upload" id="resource-upload-box" hidden data-r2-only>
       <div class="a-upload-head">
         <b>上传文件到 R2 私有存储</b>
         <span>新建资料请先保存，再重新打开本弹窗上传。上传后会自动更新文件路径、文件名、类型与大小。</span>
@@ -3084,6 +3084,7 @@ async function handleApi(request, env, ctx, url) {
       contents: contentStats,
       resources: Number(resourceCount.n || 0),
       tools: Number(toolCount.n || 0),
+      r2_enabled: !!env.R2,
       recent,
     });
   }
@@ -3799,8 +3800,14 @@ async function handleMedia(request, env, url) {
   }
 
   const match = url.pathname.match(/^\/media\/([a-z0-9-]+)\.(jpg|jpeg|png|webp|gif)$/);
-  if (!match || !env.R2) return new Response("Not Found", { status: 404 });
+  if (!match) return new Response("Not Found", { status: 404 });
 
+  // 先查静态目录 public/media/ 下的文件（本地打包的静态图）
+  const assetResp = await env.ASSETS.fetch(request).catch(() => null);
+  if (assetResp && assetResp.ok) return assetResp;
+
+  // 再查 R2 上传的媒体文件
+  if (!env.R2) return new Response("Not Found", { status: 404 });
   const obj = await env.R2.get(`media/${match[1]}.${match[2]}`);
   if (!obj) return new Response("Not Found", { status: 404 });
 

@@ -165,9 +165,41 @@
 
   /* ---------------- 概览 ---------------- */
 
+  function applyR2Status(r2Enabled) {
+    // 隐藏/显示所有标记为仅 R2 可用的元素（上传、下载、R2 路径输入）
+    $$("[data-r2-only]").forEach(function (el) {
+      el.hidden = !r2Enabled;
+      // 禁用表单控件（hidden 的 input 仍可能被提交）
+      Array.prototype.forEach.call(el.querySelectorAll && el.querySelectorAll("input, textarea, select, button"), function (ctrl) {
+        ctrl.disabled = !r2Enabled;
+      });
+    });
+    // 全局顶部提示条
+    var banner = $("#r2-status-banner");
+    if (!r2Enabled) {
+      if (!banner) {
+        banner = document.createElement("div");
+        banner.id = "r2-status-banner";
+        banner.className = "a-banner warn";
+        banner.innerHTML = "⚠ 尚未配置 R2 私有文件存储，<b>上传课程配图、资料、附件</b>功能暂不可用。会员下载已登记的付费文件也会提示未配置。请按部署说明绑定 Cloudflare R2 桶后恢复。";
+        // 插到 body 最前面，让它顶在左侧导航上方
+        var body = document.body;
+        if (body.firstChild) body.insertBefore(banner, body.firstChild);
+        else body.appendChild(banner);
+      } else {
+        banner.hidden = false;
+      }
+    } else if (banner) {
+      banner.hidden = true;
+    }
+  }
+
   async function initOverview() {
     try {
       var data = await api("/api/admin/overview");
+      // 全局应用 R2 状态（上传/下载 UI 会据此隐藏）
+      applyR2Status(!!data.r2_enabled);
+
       var stats = $("[id=overview-stats]") || $("#overview-stats");
       if (stats) {
         stats.innerHTML =

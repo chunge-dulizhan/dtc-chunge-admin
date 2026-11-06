@@ -9,9 +9,10 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "chunge-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "9e47a6cc-a291-4a75-9cd8-cc1c959f49a9"
 
-# R2 私有文件存储（先创建 chunge-private-files 桶；不需要 R2 时可整段注释）
-[[r2_buckets]]
-binding = "R2"
-bucket_name = "chunge-private-files"
+# R2 私有文件存储（可选：需要在 Cloudflare 控制台先创建桶 chunge-private-files，
+# 然后把下面这段取消注释。未配置时网站其他功能不受影响，仅会员文件上传/下载不可用。）
+# [[r2_buckets]]
+# binding = "R2"
+# bucket_name = "chunge-private-files"
