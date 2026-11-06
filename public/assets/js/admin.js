@@ -565,6 +565,56 @@
       });
     });
 
+    var imageBtn = $("#content-image-upload");
+    if (imageBtn) {
+      imageBtn.addEventListener("click", async function () {
+        var input = $("#content-image");
+        var hint = $("#content-image-hint");
+        var file = input && input.files && input.files[0];
+        if (!file) {
+          showAlert(alertEl, "请选择要上传的图片。");
+          return;
+        }
+
+        imageBtn.disabled = true;
+        imageBtn.textContent = "上传中…";
+        hideAlert(alertEl);
+        try {
+          var fd = new FormData();
+          fd.append("file", file);
+          var res = await fetch("/api/admin/uploads/image", {
+            method: "POST",
+            credentials: "same-origin",
+            body: fd,
+          });
+          var data = await res.json().catch(function () {
+            return null;
+          });
+          if (res.status === 401) {
+            location.href = "/admin/";
+            return;
+          }
+          if (!res.ok || !data || !data.ok) {
+            throw new Error((data && data.message) || "图片上传失败，请稍后重试。");
+          }
+
+          var ta = form.elements.body;
+          var insert = "\n\n![图片说明](" + data.url + ")\n\n";
+          var start = typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length;
+          var end = typeof ta.selectionEnd === "number" ? ta.selectionEnd : ta.value.length;
+          ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
+          ta.focus();
+          if (hint) hint.textContent = "已插入： " + data.url;
+          toast("图片已上传并插入正文");
+        } catch (err) {
+          showAlert(alertEl, err.message);
+        } finally {
+          imageBtn.disabled = false;
+          imageBtn.textContent = "上传并插入";
+        }
+      });
+    }
+
     form.addEventListener("submit", async function (event) {
       event.preventDefault();
       hideAlert(alertEl);

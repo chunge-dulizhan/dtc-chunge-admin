@@ -714,6 +714,24 @@ let memberCookie = "";
   pass("管理员可编辑并发布工具");
 }
 
+/* ---------------- 20. 第五轮：课程配图上传与公开图片路由 ---------------- */
+{
+  const anon = await call("/api/admin/uploads/image", { method: "POST", body: {} });
+  assert.equal(anon.res.status, 401);
+  pass("未登录无法上传课程配图");
+
+  const noR2 = await call("/api/admin/uploads/image", { method: "POST", cookie: adminCookie, body: {} });
+  assert.equal(noR2.res.status, 503);
+  assert.equal(noR2.data.error, "r2_not_configured");
+  pass("未绑定 R2 时课程配图上传给出明确提示");
+
+  const media = await call("/media/abc123.png");
+  assert.equal(media.res.status, 404);
+  const traversal = await call("/media/%2e%2e%2fsecret.png");
+  assert.equal(traversal.res.status, 404);
+  pass("公开图片路由只接受合法文件名");
+}
+
 await Promise.all(pending);
 
 console.log(`\n共 ${results.length} 项服务端测试全部通过。`);

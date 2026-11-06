@@ -1199,6 +1199,12 @@ function adminContentBody() {
     </div>
     <label class="a-field"><span>摘要（列表与搜索结果用）</span><textarea name="excerpt" rows="2" maxlength="300" placeholder="一句话说明这篇内容解决什么问题"></textarea></label>
     <label class="a-field"><span>正文（Markdown）*</span><textarea name="body" rows="16" class="a-code-input" placeholder="## 小节标题&#10;&#10;正文段落…"></textarea></label>
+    <div class="a-media-bar">
+      <span>正文配图</span>
+      <input type="file" id="content-image" accept="image/png,image/jpeg,image/webp,image/gif">
+      <button class="btn btn-ghost btn-sm" type="button" id="content-image-upload">上传并插入</button>
+      <span class="a-hint" id="content-image-hint">支持 JPG / PNG / WebP / GIF，5 MB 以内。</span>
+    </div>
     <p class="a-form-alert" id="content-alert" hidden></p>
     <div class="a-dialog-foot">
       <span class="a-hint" id="content-meta"></span>
@@ -3085,6 +3091,66 @@ async function handleApi(request, env, ctx, url) {
     return json({ ok: true, item: { id: contentId, status } });
   }
 
+  /* ---------------- 课程正文配图上传（公开图片） ---------------- */
+
+  if (path === "/api/admin/uploads/image" && method === "POST") {
+    if (!originAllowed(request)) return fail(403, "forbidden_origin", "请求来源不被允许。");
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    if (!env.R2) {
+      return fail(503, "r2_not_configured", "尚未配置 R2 私有存储，请先按部署说明绑定存储桶。");
+    }
+
+    const contentType = request.headers.get("Content-Type") || "";
+    if (!contentType.includes("multipart/form-data")) {
+      return fail(400, "invalid_body", "请使用文件上传表单提交。");
+    }
+
+    let form;
+    try {
+      form = await request.formData();
+    } catch {
+      return fail(400, "invalid_body", "上传数据解析失败，请重试。");
+    }
+
+    const file = form.get("file");
+    if (!file || typeof file === "string" || !file.size) {
+      return fail(400, "missing_file", "请选择要上传的图片。");
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      return fail(413, "file_too_large", "图片不能超过 5 MB。");
+    }
+
+    const imageTypes = {
+      "image/jpeg": "jpg",
+      "image/png": "png",
+      "image/webp": "webp",
+      "image/gif": "gif",
+    };
+    const ext = imageTypes[file.type];
+    if (!ext) {
+      return fail(400, "invalid_type", "只支持 JPG、PNG、WebP、GIF 图片。");
+    }
+
+    const name = `${Date.now().toString(36)}-${randomHex(6)}.${ext}`;
+    const key = `media/${name}`;
+    await env.R2.put(key, file.stream(), {
+      httpMetadata: {
+        contentType: file.type,
+        cacheControl: "public, max-age=31536000, immutable",
+      },
+    });
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "content.image",
+      detail: key,
+    });
+
+    return json({ ok: true, url: `/media/${name}` });
+  }
+
   /* ---------------- 工具管理 ---------------- */
 
   if (path === "/api/admin/tools" && method === "GET") {
@@ -3398,6 +3464,39 @@ async function handleApi(request, env, ctx, url) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 公开图片：课程正文配图（付费资料仍走会员下载，不放这里）             */
+/* ------------------------------------------------------------------ */
+
+const MEDIA_MIME = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+async function handleMedia(request, env, url) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const match = url.pathname.match(/^\/media\/([a-z0-9-]+)\.(jpg|jpeg|png|webp|gif)$/);
+  if (!match || !env.R2) return new Response("Not Found", { status: 404 });
+
+  const obj = await env.R2.get(`media/${match[1]}.${match[2]}`);
+  if (!obj) return new Response("Not Found", { status: 404 });
+
+  return new Response(request.method === "HEAD" ? null : obj.body, {
+    status: 200,
+    headers: {
+      "Content-Type": MEDIA_MIME[match[2]],
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* 会员工具页：先服务端校验，再返回静态工具页                          */
 /* ------------------------------------------------------------------ */
 
@@ -3491,6 +3590,11 @@ export default {
       // 会员工具页：服务端校验会员身份与工具发布状态后再返回页面
       if (url.pathname === "/tools" || url.pathname.startsWith("/tools/")) {
         return await handleToolPage(request, env, url);
+      }
+
+      // 课程正文配图（公开静态图片，与付费资料分开）
+      if (url.pathname.startsWith("/media/")) {
+        return await handleMedia(request, env, url);
       }
 
       // 会员专属区域：服务端先校验会话与会员状态，再渲染内容

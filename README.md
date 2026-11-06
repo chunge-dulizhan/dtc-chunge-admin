@@ -26,7 +26,7 @@
 │  ├─ schema.sql                 # D1 建表语句
 │  └─ seed.sql                   # 可选演示数据（10 篇课程、5 份资料、5 个工具）
 ├─ tests/
-│  ├─ worker.test.mjs            # 65 项服务端权限与功能测试
+│  ├─ worker.test.mjs            # 68 项服务端权限与功能测试
 │  └─ dev-server.mjs             # 本地开发服务器（模拟 D1 与 R2）
 ├─ wrangler.toml                 # D1 / R2 绑定配置
 └─ README.md
@@ -41,6 +41,7 @@
 | `/member/app/*` | 会员中心、课程、工具库、资料库 | 正常会员 |
 | `/admin/*` | 管理后台页面 | 管理员 |
 | `/tools/<slug>/` | 工具页面 | 按工具权限，服务端校验 |
+| `/media/*` | 课程配图等公开图片（来自 R2 `media/`） | 所有人（只允许图片文件名） |
 | `/api/tools/<slug>/calc` | 工具计算接口 | 每次请求校验会员 |
 | `/api/member/*` | 登录、会话、退出 | 按接口 |
 | `/api/admin/*` | 后台接口 | 管理员 Cookie |
@@ -205,7 +206,9 @@ npx wrangler pages secret put CODE_PEPPER --project-name=chunge-member-center
 - 填写标题、访问路径（slug，如 `meta-ads-cold-start`）。
 - 选择分类、权限（免费公开 / 会员专属）、状态（草稿 / 发布 / 下架）。
 - 正文使用 Markdown：标题、段落、列表、引用、表格、代码块、图片、链接。
-- 图片可放在公开静态目录（`public/assets/img/`）后以 Markdown 引用。
+- 配图直接在弹窗的「正文配图」区上传：选择图片 → 点击「上传并插入」，系统把文件存入 R2 的 `media/` 目录，并自动在正文光标处插入 `![图片说明](/media/xxx.png)`。
+- 配图属于公开资源（不含付费信息），`/media/` 无需登录即可访问，便于搜索引擎与页面缓存；付费文件仍走私有下载，不会出现在 `/media/`。
+- 也可以手工把图片放到 `public/assets/img/`，再用 Markdown 引用。
 - 发布后会员立即可见；改为下架后会员立即无法访问。
 
 ### 上传付费资料
@@ -305,7 +308,7 @@ D1 只保存文件元数据，文件本体在 R2。请定期使用 Cloudflare �
 | 数据库可导出备份 | 见「数据库备份与恢复」 |
 | 出错提示不泄露内部信息 | 已通过（统一错误文案） |
 
-服务端自动化测试共 65 项，全部通过：
+服务端自动化测试共 68 项，全部通过：
 
 ```powershell
 node tests/worker.test.mjs
@@ -350,4 +353,4 @@ Pages 项目没有绑定变量名为 `R2` 的存储桶，按「配置绑定」�
 确认后台工具状态为「发布」，入口为 `/tools/<slug>/`，且 `public/tools/<slug>/index.html` 存在。
 
 **课程正文里的图片不显示？**
-把图片放到 `public/assets/img/`，Markdown 中使用 `/assets/img/文件名` 引用，然后重新部署。
+在课程弹窗里用「正文配图」上传后，正文会自动插入 `/media/xxx.png` 形式的地址；若手工填写，请确认路径以 `/media/` 开头且文件已上传成功（提示未配置 R2 时先绑定 `R2` 桶）。
