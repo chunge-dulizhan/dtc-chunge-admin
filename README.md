@@ -69,7 +69,9 @@ node tests/dev-server.mjs
 
 ---
 
-## 三、部署到 Cloudflare（从零开始）
+## 三、部署到 Cloudflare（从现有 GitHub 仓库到正式上线）
+
+源码已在 `https://github.com/chunge-dulizhan/dtc-chunge-admin`。以下步骤全部在 Cloudflare 完成，共 9 步。
 
 ### 1. 准备账号与工具
 
@@ -121,11 +123,12 @@ npx wrangler r2 bucket create chunge-private-files
 方式 A（连接 GitHub，推荐长期使用）：
 
 1. Cloudflare 控制台 → Workers & Pages → Create → Pages → Connect to Git。
-2. 选择仓库 `chunge-member-center`。
-3. Framework preset 选 None，Build command 留空，Build output directory 填 `public`。
-4. 保存并部署。
+2. 授权 Cloudflare 访问 GitHub，选择**现有仓库 `chunge-dulizhan/dtc-chunge-admin`**（不需要新建仓库）。
+3. 项目名称保持 `chunge-member-center`（与 `wrangler.toml` 的 `name` 一致，Git 集成才会自动应用其中的 D1 / R2 绑定与兼容性配置）。
+4. Framework preset 选 None，Build command 留空，Build output directory 填 `public`。
+5. 保存并部署；之后每次 `git push` 到 `main` 都会自动重新部署。
 
-方式 B（本机直接上传）：
+方式 B（本机直接上传，不依赖 GitHub）：
 
 ```powershell
 npx wrangler pages deploy public --project-name=chunge-member-center
@@ -166,6 +169,7 @@ npx wrangler pages secret put CODE_PEPPER --project-name=chunge-member-center
 ```
 
 > `CODE_PEPPER` 一旦更换，已发放的访问码将全部失效，只能逐个重置。请妥善保存并备份。
+> 若忘记配置 `CODE_PEPPER`，所有 API 会返回 `missing_config` 错误并拒绝服务——这是有意设计，避免以弱哈希运行；配置后重新部署即可恢复。
 
 ### 8. 创建第一个管理员
 
@@ -329,20 +333,20 @@ node tests/worker.test.mjs
 
 ## 八、提交到 GitHub
 
+源码仓库已建立并推送完成：`https://github.com/chunge-dulizhan/dtc-chunge-admin`（`main` 分支）。日常迭代：
+
 ```powershell
-git init
 git add .
-git commit -m "feat: 独立站春哥知识库与付费会员中心"
-git branch -M main
-git remote add origin https://github.com/你的账号/chunge-member-center.git
-git push -u origin main
+git commit -m "你的改动说明"
+# 本机访问 GitHub 需要走本机代理
+git -c http.proxy=http://127.0.0.1:7897 push
 ```
 
 推送前请确认：
 
-- 没有把 `wrangler.toml` 里的真实 `database_id` 当成密钥（它本身不敏感，但建议仓库私有）。
-- 没有提交 `.dev.vars`、`*.sqlite`、备份 SQL、管理员密码或 `CODE_PEPPER`。
-- 仓库名建议使用 `chunge-member-center`。
+- 不要把 `wrangler.toml` 里的真实 `database_id` 当成密钥（它本身不敏感，但建议仓库私有）。
+- 不要提交 `.dev.vars`、`*.sqlite`、备份 SQL、管理员密码或 `CODE_PEPPER`。
+- 仓库名（`dtc-chunge-admin`）与 Pages 项目名（`chunge-member-center`）是两个独立的名字，互不影响运行。
 
 ---
 

@@ -2750,6 +2750,11 @@ async function handleApi(request, env, ctx, url) {
     return json({ ok: true, service: "chunge-member-center" });
   }
 
+  // 生产环境必须配置 CODE_PEPPER；缺失时拒绝服务，避免静默退化为弱哈希
+  if (!pepper) {
+    return fail(500, "missing_config", "服务端尚未完成初始化配置，请联系管理员。");
+  }
+
   if (path === "/api/member/login" && method === "POST") {
     return handleMemberLogin(request, env, ctx);
   }
