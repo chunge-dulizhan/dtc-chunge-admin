@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.dev/
+.dev.vars
+*.sqlite
+*.sqlite-journal
+backup-*.sql
+.DS_Store

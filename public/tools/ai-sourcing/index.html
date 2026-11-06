@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 选品 SOP｜独立站春哥</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="/assets/css/tools.css">
+</head>
+<body class="tool-page" data-tool="ai-sourcing">
+<header class="t-bar">
+  <a class="brand" href="/member/app/">
+    <span class="brand-mark">春</span>
+    <span class="brand-text"><span class="brand-name">独立站春哥</span><span class="brand-sub">MEMBER TOOLS</span></span>
+  </a>
+  <span class="t-badge">会员专享 · 微信 ch022427</span>
+  <a class="t-back" href="/member/app/tools/">返回工具库</a>
+</header>
+
+<main class="t-main">
+  <div class="t-head">
+    <div class="t-eyebrow">Tool 05 / AI Sourcing</div>
+    <h1>AI 选品 SOP</h1>
+    <p>填好品类、人群与目标市场，生成一套可执行的选品流程和一段可直接交给 AI 的提示词，按步骤产出候选清单。</p>
+    <div class="t-meta">
+      <span class="t-chip">会员专属</span>
+      <span class="t-chip">服务端生成</span>
+      <span class="t-chip">更新 2026-11</span>
+    </div>
+  </div>
+
+  <div class="t-grid">
+    <section class="t-card">
+      <h2>填写选品条件<span>越具体，扩词与竞品拆解越准确</span></h2>
+      <form class="t-form" data-tool-form>
+        <label class="t-field">
+          <span>品类方向</span>
+          <input type="text" name="category" maxlength="40" value="宠物用品" placeholder="例如：宠物用品、家居收纳" required>
+        </label>
+        <label class="t-field">
+          <span>目标人群</span>
+          <input type="text" name="audience" maxlength="80" value="美国 25-40 岁养猫女性" placeholder="例如：美国 25-40 岁养猫女性" required>
+        </label>
+        <label class="t-field">
+          <span>目标市场</span>
+          <select name="market">
+            <option value="US" selected>美国 US</option>
+            <option value="EU">欧洲 EU</option>
+            <option value="UK">英国 UK</option>
+          </select>
+        </label>
+        <label class="t-field">
+          <span>目标价格带</span>
+          <input type="text" name="price_band" maxlength="20" value="25-45" placeholder="例如：25-45">
+        </label>
+        <div class="t-alert" data-role="alert" hidden></div>
+        <button class="btn btn-primary btn-block t-submit" type="submit">生成选品 SOP</button>
+      </form>
+    </section>
+
+    <section class="t-result" data-role="result">
+      <div class="t-empty">填写左侧条件后点击生成<br>这里会输出 6 步选品流程与可复制的 AI 提示词</div>
+    </section>
+  </div>
+
+  <div class="t-foot">
+    <span>© 2026 独立站春哥（亿级操盘手）｜带教咨询微信：ch022427</span>
+    <span>AI 输出仅作为候选方向，下单前必须人工核对合规、侵权与物流限制。</span>
+  </div>
+</main>
+
+<script src="/assets/js/tools.js" defer></script>
+</body>
+</html>

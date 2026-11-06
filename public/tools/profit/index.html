@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>跨境电商利润计算器｜独立站春哥</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="/assets/css/tools.css">
+</head>
+<body class="tool-page" data-tool="profit">
+<header class="t-bar">
+  <a class="brand" href="/member/app/">
+    <span class="brand-mark">春</span>
+    <span class="brand-text"><span class="brand-name">独立站春哥</span><span class="brand-sub">MEMBER TOOLS</span></span>
+  </a>
+  <span class="t-badge">会员专享 · 微信 ch022427</span>
+  <a class="t-back" href="/member/app/tools/">返回工具库</a>
+</header>
+
+<main class="t-main">
+  <div class="t-head">
+    <div class="t-eyebrow">Tool 03 / Profit</div>
+    <h1>跨境电商利润计算器</h1>
+    <p>把采购、物流、平台费、广告、退款与其他损耗全部算进去，看清每一单真实净利，而不是只看营业额。</p>
+    <div class="t-meta">
+      <span class="t-chip">会员专属</span>
+      <span class="t-chip">服务端计算</span>
+      <span class="t-chip">更新 2026-11</span>
+    </div>
+  </div>
+
+  <div class="t-grid">
+    <section class="t-card">
+      <h2>填写单笔订单数据<span>退款损耗按售价计，可自行调整</span></h2>
+      <form class="t-form" data-tool-form>
+        <label class="t-field">
+          <span>售价</span>
+          <div class="t-input-wrap">
+            <input type="number" name="price" min="0.01" max="1000000" step="0.01" value="39.90" required>
+            <em data-cur>USD</em>
+          </div>
+        </label>
+        <label class="t-field">
+          <span>采购成本</span>
+          <div class="t-input-wrap">
+            <input type="number" name="product_cost" min="0" max="1000000" step="0.01" value="9.00" required>
+            <em data-cur>USD</em>
+          </div>
+        </label>
+        <label class="t-field">
+          <span>物流与尾程成本</span>
+          <div class="t-input-wrap">
+            <input type="number" name="shipping_cost" min="0" max="1000000" step="0.01" value="6.50" required>
+            <em data-cur>USD</em>
+          </div>
+        </label>
+        <label class="t-field">
+          <span>广告成本（每单）</span>
+          <div class="t-input-wrap">
+            <input type="number" name="ad_cost" min="0" max="1000000" step="0.01" value="8.00" required>
+            <em data-cur>USD</em>
+          </div>
+        </label>
+        <label class="t-field">
+          <span>平台与收款费率</span>
+          <div class="t-input-wrap">
+            <input type="number" name="fee_rate" min="0" max="50" step="0.1" value="4.5" required>
+            <em>%</em>
+          </div>
+        </label>
+        <label class="t-field">
+          <span>退款率</span>
+          <div class="t-input-wrap">
+            <input type="number" name="refund_rate" min="0" max="100" step="0.1" value="5" required>
+            <em>%</em>
+          </div>
+        </label>
+        <label class="t-field">
+          <span>其他成本（客服 / 汇损 / 包装等）</span>
+          <div class="t-input-wrap">
+            <input type="number" name="other_cost" min="0" max="1000000" step="0.01" value="1.50" required>
+            <em data-cur>USD</em>
+          </div>
+        </label>
+        <label class="t-field">
+          <span>币种</span>
+          <select name="currency">
+            <option value="USD" selected>USD 美元</option>
+            <option value="EUR">EUR 欧元</option>
+            <option value="GBP">GBP 英镑</option>
+            <option value="CNY">CNY 人民币</option>
+          </select>
+        </label>
+        <div class="t-alert" data-role="alert" hidden></div>
+        <button class="btn btn-primary btn-block t-submit" type="submit">计算单笔净利</button>
+      </form>
+    </section>
+
+    <section class="t-result" data-role="result">
+      <div class="t-empty">填写左侧参数后点击计算<br>结果会显示单笔净利、净利率与成本明细</div>
+    </section>
+  </div>
+
+  <div class="t-foot">
+    <span>© 2026 独立站春哥（亿级操盘手）｜带教咨询微信：ch022427</span>
+    <span>退款损耗按售价估算，实际以退款政策与退货处理成本为准。</span>
+  </div>
+</main>
+
+<script src="/assets/js/tools.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>会员中心登录｜独立站春哥</title>
+  <meta name="description" content="春哥独立站会员中心，输入购买会员后获得的专属访问码，进入会员专属学习空间。">
+  <meta name="theme-color" content="#0e1318">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/css/style.css">
+  <script>document.documentElement.classList.add("js");</script>
+</head>
+<body class="login-page">
+
+  <div class="login-shell">
+
+    <aside class="login-aside">
+      <div class="login-aside-bg" aria-hidden="true"></div>
+
+      <a class="brand" href="/" aria-label="返回独立站春哥首页">
+        <span class="brand-mark">春</span>
+        <span class="brand-text">
+          <span class="brand-name">独立站春哥</span>
+          <span class="brand-sub">CHUNGE · DTC</span>
+        </span>
+      </a>
+
+      <div class="login-aside-main">
+        <span class="login-badge">Member Only</span>
+        <h1>会员不是买课，<br>是买一套<em>能照着做</em>的系统。</h1>
+        <ul class="login-aside-list">
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v18H6.5A2.5 2.5 0 0 0 4 23V5.5Z"/><path d="M4 18.5h15"/></svg>
+            10 大模块图文实战课程，按顺序学
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 19.5h16"/><path d="M7.5 16V9M12 16V5M16.5 16v-4.5"/></svg>
+            定价、广告、利润计算器等会员工具
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>
+            SOP、清单、表格与提示词，直接下载
+          </li>
+        </ul>
+      </div>
+
+      <div class="login-aside-foot">
+        <span>付费会员专享</span>
+        <span>带教咨询微信 ch022427</span>
+      </div>
+    </aside>
+
+    <main class="login-main">
+      <div class="login-card">
+        <div class="login-card-top">
+          <a href="/">← 返回首页</a>
+          <span>付费会员专享｜带教咨询微信 ch022427</span>
+        </div>
+
+        <span class="lock-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.2"/></svg>
+        </span>
+
+        <h2>欢迎进入春哥独立站会员中心</h2>
+        <p class="lead">请输入购买会员后获得的专属访问码，即可进入会员专属学习空间。</p>
+
+        <form class="login-form" id="member-login-form" novalidate>
+          <div class="field">
+            <label for="access-code">请输入会员访问码</label>
+            <input
+              id="access-code"
+              name="access-code"
+              type="text"
+              inputmode="text"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+              maxlength="14"
+              placeholder="例如 VG8K-29PX-QM7D"
+              aria-describedby="code-hint">
+            <p class="field-hint" id="code-hint">12 位字符，不区分大小写 · 输入时自动分段</p>
+          </div>
+
+          <div class="form-alert" id="login-alert" role="alert">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v6M12 16.5h.01"/></svg>
+            <span class="form-alert-text"></span>
+          </div>
+
+          <button class="btn btn-primary btn-block" type="submit">进入会员中心</button>
+        </form>
+
+        <div class="member-state" id="member-state" hidden>
+          <div class="member-state-head">
+            <span class="member-state-dot" aria-hidden="true"></span>
+            访问码验证通过
+          </div>
+          <p class="member-state-code" id="member-state-code">会员编号 CH001</p>
+          <p class="member-state-meta" id="member-state-meta">永久会员</p>
+          <p class="member-state-note">会员中心内容与课程入口将在第三轮开发中开放，当前已验证登录状态与权限。</p>
+          <button class="login-copy member-logout" type="button" id="member-logout">退出登录</button>
+        </div>
+
+        <div class="login-divider">还没有访问码？</div>
+
+        <div class="login-helper">
+          <p>会员由管理员一对一开通，不需要注册账号、不绑定邮箱。添加微信说明「会员」，开通后会获得一组独立访问码。</p>
+          <div class="copy-row">
+            <span>带教咨询微信 <b>ch022427</b></span>
+            <button class="login-copy" type="button" data-copy="ch022427">复制微信号</button>
+          </div>
+        </div>
+
+        <p class="login-foot">
+          访问码仅用于会员中心身份验证，请勿截图转发。<br>
+          访问码由管理员一对一发放，丢失或失效请联系微信 ch022427 重新获取。
+        </p>
+      </div>
+    </main>
+
+  </div>
+
+  <script src="/assets/js/site.js" defer></script>
+  <script src="/assets/js/member-login.js" defer></script>
+</body>
+</html>
