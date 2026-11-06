@@ -109,9 +109,7 @@ npx wrangler d1 execute chunge-db --remote --file=db/schema.sql
 npx wrangler d1 execute chunge-db --remote --file=db/seed.sql
 ```
 
-### 4. 创建 R2 私有存储桶（可选，不创建也能正常运行网站）
-
-> 如果你暂时没有开通 R2 付费能力，可以跳过这一步。网站会正常运行，只是**课程配图、课程附件、付费资料的上传与下载功能不可用**，后台会显示顶部提示条。等后续开通 R2 后再绑定即可，现有会员、课程、工具等功能不受影响。
+### 4. 创建 R2 私有存储桶
 
 ```powershell
 npx wrangler r2 bucket create chunge-private-files
@@ -142,12 +140,12 @@ npx wrangler pages deploy public --project-name=chunge-member-center
 
 在 Pages 项目 → Settings → Bindings（或 Functions → Bindings）中添加：
 
-| 类型 | 变量名 | 目标 | 是否必须 |
-| --- | --- | --- | --- |
-| D1 database | `DB` | `chunge-db` | 必须 |
-| R2 bucket | `R2` | `chunge-private-files` | **可选** |
+| 类型 | 变量名 | 目标 |
+| --- | --- | --- |
+| D1 database | `DB` | `chunge-db` |
+| R2 bucket | `R2` | `chunge-private-files` |
 
-变量名必须与代码一致（`DB`、`R2`），大小写敏感。R2 绑定缺失时网站核心功能（会员、课程、工具、管理后台）照常运行，只是文件上传/下载不可用。配置完成后重新部署一次。
+变量名必须与代码一致（`DB`、`R2`），大小写敏感。配置完成后重新部署一次。
 
 ### 7. 配置环境变量与密钥
 
