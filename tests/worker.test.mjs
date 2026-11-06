@@ -981,6 +981,89 @@ let memberCookie = "";
   pass("课程下架后附件同时失效");
 }
 
+/* ---------------- 6. 公开免费课程列表与课程图片 ---------------- */
+{
+  const login = await call("/api/admin/login", { method: "POST", body: { username: "chunge", password: "Chunge@2026!" } });
+  const adminCookie = setCookieToken(login.res);
+
+  const freeBody = "开头文字。\n\n![图片说明](/media/pub-free.png)\n\n结尾文字。";
+  const free = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "免费课程测试",
+      slug: "public-free-test",
+      content_type: "article",
+      access_level: "free",
+      status: "published",
+      sort_order: 0,
+      excerpt: "免费课程摘要",
+      body: freeBody,
+    },
+  });
+  assert.equal(free.res.status, 200, "免费课程创建应成功");
+
+  const member = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "会员课程测试",
+      slug: "public-member-test",
+      content_type: "article",
+      access_level: "member",
+      status: "published",
+      sort_order: 0,
+      excerpt: "会员课程摘要",
+      body: "会员正文",
+    },
+  });
+  assert.equal(member.res.status, 200, "会员课程创建应成功");
+
+  const draft = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "免费草稿测试",
+      slug: "public-draft-test",
+      content_type: "article",
+      access_level: "free",
+      status: "draft",
+      sort_order: 0,
+      body: "草稿正文",
+    },
+  });
+  assert.equal(draft.res.status, 200);
+
+  const list = await call("/courses/");
+  assert.equal(list.res.status, 200, "公开课程列表应可访问");
+  assert.match(list.text, /免费课程测试/, "已发布的免费课程应出现在公开列表");
+  assert.match(list.text, /\/library\/public-free-test\//, "公开列表应链接到课程详情");
+  assert.doesNotMatch(list.text, /会员课程测试/, "会员专属课程不得出现在公开列表");
+  assert.doesNotMatch(list.text, /免费草稿测试/, "草稿不得出现在公开列表");
+  pass("公开课程列表只显示已发布的免费课程");
+
+  const aliasList = await call("/library/");
+  assert.equal(aliasList.res.status, 200);
+  assert.match(aliasList.text, /免费课程测试/);
+  pass("/library/ 与 /courses/ 展示同一份公开课程列表");
+
+  const detail = await call("/library/public-free-test/");
+  assert.equal(detail.res.status, 200, "访客应能打开免费课程详情");
+  assert.match(detail.text, /<img[^>]*src="\/media\/pub-free.png"/, "正文图片应渲染为 img 标签");
+  assert.match(detail.text, /免费/, "免费内容应有免费标识");
+  pass("访客可阅读免费课程且正文图片正确渲染");
+
+  const memberDetail = await call("/library/public-member-test/");
+  assert.equal(memberDetail.res.status, 302, "访客打开会员课程应跳转登录");
+  assert.match(memberDetail.res.headers.get("Location") || "", /\/member\//);
+  pass("访客无法打开会员专属课程");
+
+  const alias = await call("/courses/public-free-test/");
+  assert.equal(alias.res.status, 302);
+  assert.match(alias.res.headers.get("Location") || "", /\/library\/public-free-test\//);
+  pass("/courses/<slug>/ 会跳转到公开详情页");
+}
+
 await Promise.all(pending);
 
 console.log(`\n共 ${results.length} 项服务端测试全部通过。`);

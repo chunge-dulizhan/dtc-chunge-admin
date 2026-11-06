@@ -971,6 +971,7 @@ function publicShell({ title, description, body }) {
     </a>
     <nav class="nav" aria-label="主导航">
       <a href="/">首页</a>
+      <a href="/courses/">免费课程</a>
       <a href="/guide/">独立站入门</a>
       <a href="/products/">选品知识库</a>
       <a href="/build/">建站教程</a>
@@ -985,11 +986,12 @@ function publicShell({ title, description, body }) {
 </header>
 <div class="mobile-nav" id="mobile-nav">
   <a href="/">首页 <small>01</small></a>
-  <a href="/guide/">独立站入门 <small>02</small></a>
-  <a href="/products/">选品知识库 <small>03</small></a>
-  <a href="/build/">建站教程 <small>04</small></a>
-  <a href="/marketing/">营销知识 <small>05</small></a>
-  <a href="/cases/">学员案例 <small>06</small></a>
+  <a href="/courses/">免费课程 <small>02</small></a>
+  <a href="/guide/">独立站入门 <small>03</small></a>
+  <a href="/products/">选品知识库 <small>04</small></a>
+  <a href="/build/">建站教程 <small>05</small></a>
+  <a href="/marketing/">营销知识 <small>06</small></a>
+  <a href="/cases/">学员案例 <small>07</small></a>
   <a class="btn btn-primary btn-block" href="/member/">进入会员中心</a>
   <p class="mobile-nav-foot">付费会员专享｜带教咨询微信 ch022427</p>
 </div>
@@ -2198,6 +2200,61 @@ async function handlePublicLibrary(request, env, ctx, url) {
 </div>`;
 
   return new Response(publicShell({ title: row.title, description: row.excerpt || row.title, body }), {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
+  });
+}
+
+/* --------------------------- 公开课程列表 --------------------------- */
+
+/**
+ * 公开免费课程列表：只展示「已发布 + 免费公开」的内容。
+ * 会员专属课程不会出现在这里，必须登录会员中心才能看到。
+ */
+async function handlePublicCourseList(request, env) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return fail(405, "method_not_allowed", "不支持该请求方法。");
+  }
+
+  const rows =
+    (
+      await env.DB.prepare(
+        `SELECT c.id, c.slug, c.title, c.excerpt, c.access_level, c.content_type,
+                c.sort_order, c.published_at, c.created_at, cat.name AS category_name
+           FROM contents c LEFT JOIN content_categories cat ON cat.id = c.category_id
+          WHERE c.status = 'published' AND c.access_level = 'free'
+          ORDER BY c.sort_order ASC, COALESCE(c.published_at, c.created_at) DESC, c.id DESC`
+      ).all()
+    ).results || [];
+
+  const listHtml = rows.length
+    ? rows
+        .map((item, index) => {
+          const date = shortDate(item.published_at || item.created_at);
+          return `<div class="m-row">
+  <span class="m-row-num">${String(index + 1).padStart(2, "0")}</span>
+  <div class="m-row-main">
+    <a class="m-row-title" href="/library/${escapeHtml(item.slug)}/">${escapeHtml(item.title)} <span class="m-tag free">免费</span></a>
+    ${item.excerpt ? `<p class="m-row-desc">${escapeHtml(item.excerpt)}</p>` : ""}
+  </div>
+  <div class="m-row-meta"><span>${escapeHtml(item.category_name || "知识库")}</span><span>${date}</span></div>
+  <span class="m-row-arrow" aria-hidden="true">→</span>
+</div>`;
+        })
+        .join("")
+    : `<p style="color:var(--muted);font-size:13px;">暂时还没有发布免费课程，可以先去<a href="/guide/" style="color:var(--orange-deep);">独立站入门</a>栏目看看。</p>`;
+
+  const body = `
+<div class="m-page-head">
+  <h1>免费课程</h1>
+  <p>不用注册、不用登录，付费课程与工具另有会员入口。这里只列出已发布的免费公开课程。</p>
+</div>
+<div style="margin-top:24px;">${listHtml}</div>
+<div class="m-note" style="margin-top:36px;">
+  <span class="m-note-ico" aria-hidden="true">i</span>
+  <div>想系统学完 10 个模块，并获得网页工具与实操资料，可以<strong>凭专属访问码</strong>进入会员中心：<a href="/member/" style="color:var(--orange-deep);">了解会员权益</a>。</div>
+</div>`;
+
+  return new Response(publicShell({ title: "免费课程", description: "独立站春哥免费课程，无需登录即可阅读。", body }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
   });
 }
@@ -4009,6 +4066,20 @@ async function handleRequest(request, env, ctx, url) {
       // 统一补斜杠
       if (url.pathname === "/member" || url.pathname === "/admin") {
         return Response.redirect(url.origin + url.pathname + "/", 308);
+      }
+
+      // 公开免费课程列表（后台新建并发布的免费课程会出现在这里）
+      if (url.pathname === "/courses" || url.pathname === "/courses/") {
+        return await handlePublicCourseList(request, env);
+      }
+      if (url.pathname === "/library" || url.pathname === "/library/") {
+        return await handlePublicCourseList(request, env);
+      }
+
+      // 兼容 /courses/<slug>/ 写法，统一跳到公开详情页
+      const courseAlias = url.pathname.match(/^\/courses\/([a-z0-9][a-z0-9-]*)\/?$/);
+      if (courseAlias) {
+        return Response.redirect(`${url.origin}/library/${courseAlias[1]}/`, 302);
       }
 
       // 公开免费内容（仅 access_level = free 且已发布的内容）
