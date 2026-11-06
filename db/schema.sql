@@ -198,6 +198,27 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 );
 
 -- ------------------------------------------------------------
+-- 学员案例（首页与 /cases/ 共用这一套数据）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cases (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  title         TEXT    NOT NULL,
+  slug          TEXT    NOT NULL UNIQUE,
+  cover_image   TEXT,                                  -- /media/ 开头的站内图片地址
+  summary       TEXT,
+  body          TEXT    NOT NULL DEFAULT '',           -- Markdown
+  category      TEXT,
+  external_link TEXT,                                  -- 选填外部链接
+  status        TEXT    NOT NULL DEFAULT 'draft',      -- draft | published | archived | deleted
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  show_on_home  INTEGER NOT NULL DEFAULT 0,            -- 1 = 在首页学员案例板块展示
+  created_at    TEXT    NOT NULL,
+  updated_at    TEXT    NOT NULL,
+  published_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cases_status ON cases(status);
+
+-- ------------------------------------------------------------
 -- 初始内容分类（10 个课程模块 + 资料分类）
 -- ------------------------------------------------------------
 INSERT OR IGNORE INTO content_categories (name, slug, type, description, sort_order, created_at) VALUES

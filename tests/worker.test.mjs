@@ -1064,6 +1064,222 @@ let memberCookie = "";
   pass("/courses/<slug>/ 会跳转到公开详情页");
 }
 
+/* ---------------- 23. 第四轮：免费课程详情页附件展示 ---------------- */
+{
+  const r2Store = new Map();
+  const r2Env = {
+    ...env,
+    R2: {
+      async put(key, value) {
+        r2Store.set(key, Buffer.from(await new Response(value).arrayBuffer()));
+        return { key };
+      },
+      async get(key) {
+        const buf = r2Store.get(key);
+        return buf ? { body: buf, size: buf.length } : null;
+      },
+      async delete(key) {
+        r2Store.delete(key);
+      },
+    },
+  };
+
+  async function rcall(path, opts) {
+    const res = await worker.fetch(req(path, opts), r2Env, ctx);
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { data = text; }
+    return { res, data, text };
+  }
+
+  async function upload(path, cookie, content, filename, type) {
+    const form = new FormData();
+    form.append("file", new File([content], filename, { type }));
+    const headers = new Headers({ Origin: ORIGIN, "CF-Connecting-IP": "10.0.0.241" });
+    if (cookie) headers.set("Cookie", cookie);
+    const res = await worker.fetch(new Request(ORIGIN + path, { method: "POST", headers, body: form }), r2Env, ctx);
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { data = text; }
+    return { res, data, text };
+  }
+
+  const freePdf = await rcall("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "免费 PDF 课程", slug: "free-pdf-course", access_level: "free", status: "published", body: "## 免费 PDF\n\n正文" },
+  });
+  assert.equal(freePdf.res.status, 200, freePdf.text);
+  const freePdfId = freePdf.data.item.id;
+
+  const up = await upload("/api/admin/contents/" + freePdfId + "/attachment", adminCookie, "%PDF-1.4 free", "免费手册.pdf", "application/pdf");
+  assert.equal(up.res.status, 200, up.text);
+
+  const page = await rcall("/library/free-pdf-course/");
+  assert.equal(page.res.status, 200);
+  assert.match(page.text, /免费手册\.pdf/, "免费课程详情页必须显示 PDF 文件名称");
+  assert.match(page.text, /\/courses\/free-pdf-course\/attachment/, "免费课程详情页必须显示附件下载入口");
+  pass("免费课程详情页展示 PDF 名称与下载入口");
+
+  const dl = await rcall("/courses/free-pdf-course/attachment");
+  assert.equal(dl.res.status, 200, "访客应能直接下载免费课程 PDF");
+  assert.match(dl.text, /%PDF-1\.4 free/);
+  pass("访客免登录可下载免费课程 PDF");
+}
+
+/* ---------------- 24. 第四轮：课程/工具/资料删除 ---------------- */
+{
+  // 未登录删除必须被拒绝
+  const noAuth = await call("/api/admin/contents/1/delete", { method: "POST" });
+  assert.equal(noAuth.res.status, 401);
+  pass("未登录无法调用删除接口");
+
+  // 课程删除
+  const content = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "待删除课程", slug: "delete-me-course", access_level: "free", status: "published", body: "正文" },
+  });
+  assert.equal(content.res.status, 200, content.text);
+  const contentId = content.data.item.id;
+
+  const delContent = await call(`/api/admin/contents/${contentId}/delete`, { method: "POST", cookie: adminCookie });
+  assert.equal(delContent.res.status, 200, delContent.text);
+  const contentList = await call("/api/admin/contents", { cookie: adminCookie });
+  assert.ok(!contentList.text.includes("delete-me-course"), "已删除课程不得出现在后台列表");
+  const publicList = await call("/courses/");
+  assert.doesNotMatch(publicList.text, /待删除课程/, "已删除课程不得出现在公开列表");
+  const contentAudit = db.prepare("SELECT id FROM audit_logs WHERE action = 'content.delete' AND detail LIKE '%delete-me-course%'").get();
+  assert.ok(contentAudit, "删除课程必须写入审计日志");
+  const recreated = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "复用路径课程", slug: "delete-me-course", access_level: "free", status: "draft", body: "正文" },
+  });
+  assert.equal(recreated.res.status, 200, "删除后原 slug 应可再次使用");
+  pass("课程删除：软删除、列表排除、审计记录、slug 可复用");
+
+  // 工具删除
+  const tool = await call("/api/admin/tools", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { name: "待删除工具", slug: "delete-me-tool", entry_url: "/tools/delete-me-tool/", access_level: "member", status: "published" },
+  });
+  assert.equal(tool.res.status, 200, tool.text);
+  const toolId = Number(tool.data.id);
+  const delTool = await call(`/api/admin/tools/${toolId}/delete`, { method: "POST", cookie: adminCookie });
+  assert.equal(delTool.res.status, 200, delTool.text);
+  const toolList = await call("/api/admin/tools", { cookie: adminCookie });
+  assert.ok(!toolList.text.includes("delete-me-tool"), "已删除工具不得出现在后台列表");
+  const toolAudit = db.prepare("SELECT id FROM audit_logs WHERE action = 'tool.delete' AND detail LIKE '%delete-me-tool%'").get();
+  assert.ok(toolAudit, "删除工具必须写入审计日志");
+  pass("工具删除：软删除、列表排除、审计记录");
+
+  // 资料删除
+  const resource = await call("/api/admin/resources", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "待删除资料", file_key: "resources/delete-me/file.pdf", file_name: "file.pdf", file_type: "pdf", access_level: "member", status: "published" },
+  });
+  assert.equal(resource.res.status, 200, resource.text);
+  const resourceId = resource.data.item.id;
+  const delResource = await call(`/api/admin/resources/${resourceId}/delete`, { method: "POST", cookie: adminCookie });
+  assert.equal(delResource.res.status, 200, delResource.text);
+  const resourceList = await call("/api/admin/resources", { cookie: adminCookie });
+  assert.ok(!resourceList.text.includes("delete-me"), "已删除资料不得出现在后台列表");
+  const resourceAudit = db.prepare("SELECT id FROM audit_logs WHERE action = 'resource.delete' AND detail LIKE '%待删除资料%'").get();
+  assert.ok(resourceAudit, "删除资料必须写入审计日志");
+  const resourceRow = db.prepare("SELECT status, file_key FROM resources WHERE id = ?").get(resourceId);
+  assert.equal(resourceRow.status, "deleted", "资料应为软删除而非物理删除");
+  assert.equal(resourceRow.file_key, "resources/delete-me/file.pdf", "删除资料不得清理 R2 文件记录");
+  pass("资料删除：软删除、列表排除、审计记录、R2 文件保留");
+}
+
+/* ---------------- 25. 第四轮：学员案例管理 ---------------- */
+{
+  // 后台案例页面
+  const adminPage = await call("/admin/cases/", { cookie: adminCookie });
+  assert.equal(adminPage.res.status, 200, adminPage.text.slice(0, 200));
+  assert.match(adminPage.text, /案例管理/);
+  const adminPageAnon = await call("/admin/cases/");
+  assert.equal(adminPageAnon.res.status, 302, "访客打开后台案例页必须跳登录");
+  pass("后台案例管理页仅管理员可见");
+
+  // 新建草稿：前台不可见
+  const draft = await call("/api/admin/cases", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "草稿案例", slug: "draft-case", category: "家居", status: "draft", body: "## 草稿\n\n内容", show_on_home: 1, summary: "草稿摘要" },
+  });
+  assert.equal(draft.res.status, 200, draft.text);
+  const caseId = draft.data.item.id;
+  let listPage = await call("/cases/");
+  assert.doesNotMatch(listPage.text, /草稿案例/, "草稿案例不得出现在 /cases/");
+  let homeApi = await call("/api/public/cases");
+  assert.doesNotMatch(homeApi.text, /草稿案例/, "草稿案例不得出现在首页接口");
+  const detail404 = await call("/cases/draft-case/");
+  assert.equal(detail404.res.status, 404, "草稿案例详情必须 404");
+  pass("草稿案例前台不可见");
+
+  // 发布：前台可见
+  const pub = await call(`/api/admin/cases/${caseId}/status`, { method: "POST", cookie: adminCookie, body: { status: "published" } });
+  assert.equal(pub.res.status, 200, pub.text);
+  listPage = await call("/cases/");
+  assert.equal(listPage.res.status, 200);
+  assert.match(listPage.text, /草稿案例/, "已发布案例必须出现在 /cases/");
+  assert.match(listPage.text, /\/cases\/draft-case\//, "案例卡片必须链接到详情页");
+  homeApi = await call("/api/public/cases");
+  assert.equal(homeApi.res.status, 200);
+  assert.match(homeApi.text, /草稿案例/, "show_on_home=1 的已发布案例必须出现在首页接口");
+  const detail = await call("/cases/draft-case/");
+  assert.equal(detail.res.status, 200, "已发布案例详情必须可访问");
+  assert.match(detail.text, /<h2[^>]*>草稿<\/h2>|草稿/, "案例详情必须渲染正文");
+  pass("发布案例后前台列表、详情与首页接口同步可见");
+
+  // 编辑：标题同步
+  const upd = await call(`/api/admin/cases/${caseId}`, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "改名后的案例", category: "家居收纳" },
+  });
+  assert.equal(upd.res.status, 200, upd.text);
+  const listAfter = await call("/cases/");
+  assert.match(listAfter.text, /改名后的案例/, "后台编辑后前台必须同步");
+  pass("编辑案例后前台自动同步");
+
+  // 下架：前台立即失效
+  await call(`/api/admin/cases/${caseId}/status`, { method: "POST", cookie: adminCookie, body: { status: "archived" } });
+  const archivedDetail = await call("/cases/draft-case/");
+  assert.equal(archivedDetail.res.status, 404, "下架案例详情必须 404");
+  const archivedApi = await call("/api/public/cases");
+  assert.doesNotMatch(archivedApi.text, /改名后的案例/, "下架案例不得出现在首页接口");
+  pass("下架案例前台立即失效");
+
+  // 删除：软删除 + 审计
+  const del = await call(`/api/admin/cases/${caseId}/delete`, { method: "POST", cookie: adminCookie });
+  assert.equal(del.res.status, 200, del.text);
+  const adminList = await call("/api/admin/cases", { cookie: adminCookie });
+  assert.ok(!adminList.text.includes("draft-case"), "已删除案例不得出现在后台列表");
+  const caseAudit = db.prepare("SELECT id FROM audit_logs WHERE action = 'case.delete' AND detail LIKE '%draft-case%'").get();
+  assert.ok(caseAudit, "删除案例必须写入审计日志");
+  const caseRow = db.prepare("SELECT status FROM cases WHERE id = ?").get(caseId);
+  assert.equal(caseRow.status, "deleted", "案例应为软删除而非物理删除");
+  pass("删除案例：软删除、列表排除、审计记录");
+
+  // 排序与首页开关：show_on_home=0 不出现在首页接口
+  const noHome = await call("/api/admin/cases", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "仅列表案例", slug: "list-only-case", status: "published", show_on_home: 0, body: "正文", sort_order: 5 },
+  });
+  assert.equal(noHome.res.status, 200, noHome.text);
+  const homeOnly = await call("/api/public/cases");
+  assert.doesNotMatch(homeOnly.text, /仅列表案例/, "show_on_home=0 不得出现在首页接口");
+  const allList = await call("/cases/");
+  assert.match(allList.text, /仅列表案例/, "show_on_home=0 仍应出现在 /cases/ 列表");
+  pass("首页展示开关只影响首页板块，不影响 /cases/ 列表");
+}
+
 await Promise.all(pending);
 
 console.log(`\n共 ${results.length} 项服务端测试全部通过。`);

@@ -302,8 +302,8 @@
       </div>
     </section>
 
-    <!-- ======== 学员案例 ======== -->
-    <section class="band band-paper2">
+    <!-- ======== 学员案例（与后台案例管理同一套数据，由 site.js 动态渲染） ======== -->
+    <section class="band band-paper2" id="home-cases-section" hidden>
       <div class="container">
         <div class="section-head reveal">
           <div>
@@ -314,51 +314,7 @@
           <a class="more-link" href="/cases/">查看全部案例</a>
         </div>
 
-        <div class="case-grid">
-          <article class="case-card reveal">
-            <div class="case-top">
-              <span class="tag tag-demo">示例案例</span>
-              <span class="case-niche">家居收纳</span>
-            </div>
-            <div class="case-metrics">
-              <div><b>6 周</b><span>拿到第一单</span></div>
-              <div><b>$4,800</b><span>第 3 个月月销</span></div>
-            </div>
-            <h3>阿凯：从选品卡壳到稳定出单</h3>
-            <p class="case-quote">「以前一直卡在选品，按验证表筛完才发现，自己之前选的品根本没有需求。」</p>
-            <footer>化名 · 零基础起步 · 数据仅作演示</footer>
-          </article>
-
-          <article class="case-card reveal" data-delay="1">
-            <div class="case-top">
-              <span class="tag tag-demo">示例案例</span>
-              <span class="case-niche">宠物用品</span>
-            </div>
-            <div class="case-metrics">
-              <div><b>2.3</b><span>广告 ROAS</span></div>
-              <div><b>+187%</b><span>落地页转化率</span></div>
-            </div>
-            <h3>小雨：做了半年没起色，重新拆了一遍链路</h3>
-            <p class="case-quote">「问题不在预算，是落地页和广告素材说的不是同一件事。」</p>
-            <footer>化名 · 有半年试错经历 · 数据仅作演示</footer>
-          </article>
-
-          <article class="case-card reveal" data-delay="2">
-            <div class="case-top">
-              <span class="tag tag-demo">示例案例</span>
-              <span class="case-niche">户外装备</span>
-            </div>
-            <div class="case-metrics">
-              <div><b>40%</b><span>自然流量占比</span></div>
-              <div><b>8 条</b><span>可复用内容模板</span></div>
-            </div>
-            <h3>老周：工厂出身，用内容把询盘做起来</h3>
-            <p class="case-quote">「不懂广告没关系，先把产品讲清楚，内容本身就是流量。」</p>
-            <footer>化名 · 工厂背景 · 数据仅作演示</footer>
-          </article>
-        </div>
-
-        <p class="demo-note">以上为示例案例，用于展示案例栏目结构，数据仅作演示，正式上线前会替换为真实复盘。</p>
+        <div class="case-grid" id="home-case-grid"></div>
       </div>
     </section>
 

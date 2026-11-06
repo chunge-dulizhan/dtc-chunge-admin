@@ -192,6 +192,45 @@
     });
   }
 
+  /* ---------- 首页学员案例（与后台案例管理同一套数据） ---------- */
+  var caseGrid = document.getElementById("home-case-grid");
+  var caseSection = document.getElementById("home-cases-section");
+
+  if (caseGrid && caseSection) {
+    var escCase = function (value) {
+      return String(value === null || value === undefined ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    };
+    fetch("/api/public/cases", { credentials: "same-origin" })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        var items = data && data.ok && Array.isArray(data.items) ? data.items : [];
+        if (!items.length) return; // 没有已发布案例时保持板块隐藏
+        caseGrid.innerHTML = items
+          .map(function (item) {
+            var cover = item.cover_image
+              ? '<img src="' + escCase(item.cover_image) + '" alt="' + escCase(item.title) + '" loading="lazy">'
+              : "";
+            return (
+              '<a class="case-card" href="/cases/' + escCase(item.slug) + '/">' +
+              '<div class="case-top">' + cover + "</div>" +
+              '<span class="case-niche">' + escCase(item.category || "学员案例") + "</span>" +
+              "<h3>" + escCase(item.title) + "</h3>" +
+              (item.summary ? '<p class="case-quote">' + escCase(item.summary) + "</p>" : "") +
+              "</a>"
+            );
+          })
+          .join("");
+        caseSection.hidden = false;
+      })
+      .catch(function () {
+        // 接口异常时保持板块隐藏，不影响首页其他内容
+      });
+  }
+
   /* ---------- 登录表单（第一阶段仅界面演示） ---------- */
   var loginForm = document.getElementById("member-login-form");
 

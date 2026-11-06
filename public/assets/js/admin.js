@@ -481,7 +481,8 @@
           '<button class="a-mini" data-act="edit" data-id="' + c.id + '">编辑</button>' +
           (c.status === "published"
             ? '<button class="a-mini" data-act="archive" data-id="' + c.id + '">下架</button>'
-            : '<button class="a-mini" data-act="publish" data-id="' + c.id + '">发布</button>');
+            : '<button class="a-mini" data-act="publish" data-id="' + c.id + '">发布</button>') +
+          '<button class="a-mini danger" data-act="delete" data-id="' + c.id + '" data-name="' + esc(c.title) + '">删除</button>';
 
         return "<tr><td><span class=\"a-cell-title\">" + esc(c.title) + '</span><span class="a-cell-sub mono">' +
           esc(c.slug) + " · " + (c.body_length || 0) + " 字符" +
@@ -498,13 +499,33 @@
     $$("#content-rows [data-act]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = parseInt(btn.getAttribute("data-id"), 10);
-        if (btn.getAttribute("data-act") === "edit") {
+        var act = btn.getAttribute("data-act");
+        if (act === "edit") {
           openContentEditor(id);
           return;
         }
-        setContentStatus(id, btn.getAttribute("data-act") === "publish" ? "published" : "archived", btn);
+        if (act === "delete") {
+          deleteContent(id, btn.getAttribute("data-name") || "", btn);
+          return;
+        }
+        setContentStatus(id, act === "publish" ? "published" : "archived", btn);
       });
     });
+  }
+
+  async function deleteContent(id, name, button) {
+    if (!askConfirm("确认删除课程「" + name + "」吗？\n\n删除后前台与会员中心都不再显示该课程，操作会记录到安全日志。此操作不可撤销。")) {
+      return;
+    }
+    button.disabled = true;
+    try {
+      await api("/api/admin/contents/" + id + "/delete", { method: "POST" });
+      toast("课程已删除");
+      loadContents();
+    } catch (err) {
+      toast(err.message, true);
+      button.disabled = false;
+    }
   }
 
   async function loadContents() {
@@ -779,7 +800,8 @@
           '<button class="a-mini" data-act="edit" data-id="' + r.id + '">编辑</button>' +
           (r.status === "published"
             ? '<button class="a-mini" data-act="archive" data-id="' + r.id + '">下架</button>'
-            : '<button class="a-mini" data-act="publish" data-id="' + r.id + '">发布</button>');
+            : '<button class="a-mini" data-act="publish" data-id="' + r.id + '">发布</button>') +
+          '<button class="a-mini danger" data-act="delete" data-id="' + r.id + '" data-name="' + esc(r.title) + '">删除</button>';
 
         return "<tr><td><span class=\"a-cell-title\">" + esc(r.title) + '</span><span class="a-cell-sub">' +
           esc(r.description || "") + "</span></td>" +
@@ -797,13 +819,33 @@
     $$("#resource-rows [data-act]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = parseInt(btn.getAttribute("data-id"), 10);
-        if (btn.getAttribute("data-act") === "edit") {
+        var act = btn.getAttribute("data-act");
+        if (act === "edit") {
           openResourceEditor(id);
           return;
         }
-        setResourceStatus(id, btn.getAttribute("data-act") === "publish" ? "published" : "archived", btn);
+        if (act === "delete") {
+          deleteResource(id, btn.getAttribute("data-name") || "", btn);
+          return;
+        }
+        setResourceStatus(id, act === "publish" ? "published" : "archived", btn);
       });
     });
+  }
+
+  async function deleteResource(id, name, button) {
+    if (!askConfirm("确认删除资料「" + name + "」吗？\n\n删除后会员中心不再显示该资料，R2 中的文件会保留以防误删共用文件，操作会记录到安全日志。此操作不可撤销。")) {
+      return;
+    }
+    button.disabled = true;
+    try {
+      await api("/api/admin/resources/" + id + "/delete", { method: "POST" });
+      toast("资料已删除");
+      loadResources();
+    } catch (err) {
+      toast(err.message, true);
+      button.disabled = false;
+    }
   }
 
   async function loadResources() {
@@ -1030,6 +1072,8 @@
             t.status === "published"
               ? '<button class="a-link danger" type="button" data-act="archive" data-id="' + t.id + '">下架</button>'
               : '<button class="a-link" type="button" data-act="publish" data-id="' + t.id + '">发布</button>';
+          actions +=
+            '<button class="a-link danger" type="button" data-act="delete" data-id="' + t.id + '" data-name="' + esc(t.name) + '">删除</button>';
           return "<tr><td><span class=\"a-cell-title\">" + esc(t.name) + '</span><span class="a-cell-sub mono">' +
             esc(t.slug) + "</span></td>" +
             '<td><span class="a-mono">' + esc(t.entry_url) + "</span></td>" +
@@ -1043,13 +1087,33 @@
       $$("#tool-rows [data-act]").forEach(function (btn) {
         btn.addEventListener("click", function () {
           var id = parseInt(btn.getAttribute("data-id"), 10);
-          if (btn.getAttribute("data-act") === "edit") {
+          var act = btn.getAttribute("data-act");
+          if (act === "edit") {
             openEditor(id);
             return;
           }
-          setStatus(id, btn.getAttribute("data-act") === "publish" ? "published" : "archived", btn);
+          if (act === "delete") {
+            deleteTool(id, btn.getAttribute("data-name") || "", btn);
+            return;
+          }
+          setStatus(id, act === "publish" ? "published" : "archived", btn);
         });
       });
+    }
+
+    async function deleteTool(id, name, button) {
+      if (!askConfirm("确认删除工具「" + name + "」吗？\n\n删除后会员中心不再显示该工具，操作会记录到安全日志。此操作不可撤销。")) {
+        return;
+      }
+      button.disabled = true;
+      try {
+        await api("/api/admin/tools/" + id + "/delete", { method: "POST" });
+        toast("工具已删除");
+        load();
+      } catch (err) {
+        toast(err.message, true);
+        button.disabled = false;
+      }
     }
 
     async function load() {
@@ -1144,6 +1208,248 @@
     load();
   }
 
+  /* ---------------- 案例管理 ---------------- */
+
+  function initCases() {
+    var rows = $("#case-rows");
+    var dialog = $("#case-dialog");
+    var form = $("#case-form");
+    var alertEl = $("#case-alert");
+    var editingId = null;
+    var cache = [];
+    var state = { q: "", status: "" };
+
+    function render(items) {
+      cache = items;
+      if (!items.length) {
+        rows.innerHTML = '<tr><td colspan="7" class="a-empty">还没有案例，先新建一个。</td></tr>';
+        return;
+      }
+      rows.innerHTML = items
+        .map(function (c) {
+          var actions =
+            '<button class="a-mini" data-act="edit" data-id="' + c.id + '">编辑</button>' +
+            (c.status === "published"
+              ? '<button class="a-mini" data-act="archive" data-id="' + c.id + '">下架</button>'
+              : '<button class="a-mini" data-act="publish" data-id="' + c.id + '">发布</button>') +
+            '<button class="a-mini danger" data-act="delete" data-id="' + c.id + '" data-name="' + esc(c.title) + '">删除</button>';
+
+          return "<tr><td><span class=\"a-cell-title\">" + esc(c.title) + '</span><span class="a-cell-sub mono">' +
+            esc(c.slug) + "</span></td>" +
+            "<td>" + esc(c.category || "未分类") + "</td>" +
+            "<td>" + statusTag(c.status) + "</td>" +
+            "<td>" + (c.show_on_home ? '<span class="a-tag free">首页</span>' : "—") + "</td>" +
+            '<td><span class="a-mono">' + esc(c.sort_order) + "</span></td>" +
+            '<td><span class="a-mono">' + esc(fmt(c.updated_at)) + "</span></td>" +
+            '<td><div class="a-actions">' + actions + "</div></td></tr>";
+        })
+        .join("");
+
+      $$("#case-rows [data-act]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var id = parseInt(btn.getAttribute("data-id"), 10);
+          var act = btn.getAttribute("data-act");
+          if (act === "edit") {
+            openEditor(id);
+            return;
+          }
+          if (act === "delete") {
+            deleteCase(id, btn.getAttribute("data-name") || "", btn);
+            return;
+          }
+          setStatus(id, act === "publish" ? "published" : "archived", btn);
+        });
+      });
+    }
+
+    async function load() {
+      var params = new URLSearchParams();
+      if (state.q) params.set("q", state.q);
+      if (state.status) params.set("status", state.status);
+      try {
+        var data = await api("/api/admin/cases?" + params.toString());
+        render(data.items || []);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    }
+
+    function toLocalInput(iso) {
+      if (!iso) return "";
+      var d = new Date(iso);
+      if (!Number.isFinite(d.getTime())) return "";
+      var pad = function (n) { return String(n).padStart(2, "0"); };
+      return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+        "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+
+    function openEditor(id) {
+      if (!dialog || !form) return;
+      hideAlert(alertEl);
+      var item = cache.filter(function (c) { return c.id === id; })[0];
+
+      if (item) {
+        editingId = item.id;
+        $("#case-dialog-title").textContent = "编辑案例";
+        form.elements.title.value = item.title || "";
+        form.elements.slug.value = item.slug || "";
+        form.elements.category.value = item.category || "";
+        form.elements.status.value = item.status || "draft";
+        form.elements.sort_order.value = item.sort_order || 0;
+        form.elements.show_on_home.value = item.show_on_home ? "1" : "0";
+        form.elements.published_at.value = toLocalInput(item.published_at);
+        form.elements.external_link.value = item.external_link || "";
+        form.elements.summary.value = item.summary || "";
+        form.elements.cover_image.value = item.cover_image || "";
+        form.elements.body.value = item.body || "";
+        $("#case-meta").textContent = "创建 " + fmt(item.created_at) + " · 更新 " + fmt(item.updated_at);
+      } else {
+        editingId = null;
+        $("#case-dialog-title").textContent = "新建案例";
+        form.reset();
+        form.elements.status.value = "draft";
+        form.elements.sort_order.value = 0;
+        form.elements.show_on_home.value = "0";
+        $("#case-meta").textContent = "发布后前台 /cases/ 立即可见；勾选首页展示才会出现在首页板块。";
+      }
+      dialog.showModal();
+    }
+
+    async function setStatus(id, status, button) {
+      button.disabled = true;
+      try {
+        await api("/api/admin/cases/" + id + "/status", { method: "POST", body: { status: status } });
+        toast(status === "published" ? "案例已发布" : "案例已下架");
+        load();
+      } catch (err) {
+        toast(err.message, true);
+        button.disabled = false;
+      }
+    }
+
+    async function deleteCase(id, name, button) {
+      if (!askConfirm("确认删除案例「" + name + "」吗？\n\n删除后首页与 /cases/ 都不再显示该案例，操作会记录到安全日志。此操作不可撤销。")) {
+        return;
+      }
+      button.disabled = true;
+      try {
+        await api("/api/admin/cases/" + id + "/delete", { method: "POST" });
+        toast("案例已删除");
+        load();
+      } catch (err) {
+        toast(err.message, true);
+        button.disabled = false;
+      }
+    }
+
+    $$("[data-new-case]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openEditor(null);
+      });
+    });
+
+    var searchInput = $("#case-search");
+    var searchBtn = $("#case-search-btn");
+    var statusSelect = $("#case-status");
+    if (searchBtn) {
+      searchBtn.addEventListener("click", function () {
+        state.q = searchInput ? searchInput.value.trim() : "";
+        state.status = statusSelect ? statusSelect.value : "";
+        load();
+      });
+    }
+    if (searchInput) {
+      searchInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          state.q = searchInput.value.trim();
+          state.status = statusSelect ? statusSelect.value : "";
+          load();
+        }
+      });
+    }
+
+    var coverBtn = $("#case-cover-upload");
+    if (coverBtn) {
+      coverBtn.addEventListener("click", async function () {
+        var input = $("#case-cover");
+        var hint = $("#case-cover-hint");
+        var file = input && input.files && input.files[0];
+        if (!file) {
+          showAlert(alertEl, "请选择要上传的封面图片。");
+          return;
+        }
+        coverBtn.disabled = true;
+        coverBtn.textContent = "上传中…";
+        hideAlert(alertEl);
+        try {
+          var fd = new FormData();
+          fd.append("file", file);
+          var res = await fetch("/api/admin/uploads/image", {
+            method: "POST",
+            credentials: "same-origin",
+            body: fd,
+          });
+          var data = await res.json().catch(function () { return null; });
+          if (res.status === 401) {
+            location.href = "/admin/";
+            return;
+          }
+          if (!res.ok || !data || !data.ok) {
+            throw new Error((data && data.message) || "封面上传失败，请稍后重试。");
+          }
+          form.elements.cover_image.value = data.url;
+          if (hint) hint.textContent = "已上传：" + data.url;
+        } catch (err) {
+          showAlert(alertEl, err.message);
+        } finally {
+          coverBtn.disabled = false;
+          coverBtn.textContent = "上传封面";
+        }
+      });
+    }
+
+    if (form) {
+      form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        hideAlert(alertEl);
+        var submit = $("#case-submit");
+        submit.disabled = true;
+        try {
+          var publishedRaw = form.elements.published_at.value;
+          var payload = {
+            title: form.elements.title.value,
+            slug: form.elements.slug.value,
+            category: form.elements.category.value,
+            status: form.elements.status.value,
+            sort_order: Number(form.elements.sort_order.value || 0),
+            show_on_home: form.elements.show_on_home.value === "1" ? 1 : 0,
+            published_at: publishedRaw ? new Date(publishedRaw).toISOString() : "",
+            external_link: form.elements.external_link.value,
+            summary: form.elements.summary.value,
+            cover_image: form.elements.cover_image.value,
+            body: form.elements.body.value,
+          };
+          if (editingId) {
+            await api("/api/admin/cases/" + editingId, { method: "POST", body: payload });
+            toast("案例已更新");
+          } else {
+            await api("/api/admin/cases", { method: "POST", body: payload });
+            toast("案例已创建");
+          }
+          dialog.close();
+          load();
+        } catch (err) {
+          showAlert(alertEl, err.message);
+        } finally {
+          submit.disabled = false;
+        }
+      });
+    }
+
+    load();
+  }
+
   /* ---------------- 网站设置 ---------------- */
 
   function initSettings() {
@@ -1192,6 +1498,7 @@
   else if (page === "content") initContent();
   else if (page === "resources") initResources();
   else if (page === "tools") initTools();
+  else if (page === "cases") initCases();
   else if (page === "settings") initSettings();
   else if (page === "audit") initAudit();
 })();

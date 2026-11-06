@@ -1108,6 +1108,7 @@ function adminShell({ title, active, admin, page, body }) {
     ["content", "/admin/content/", "课程管理"],
     ["resources", "/admin/resources/", "资料管理"],
     ["tools", "/admin/tools/", "工具管理"],
+    ["cases", "/admin/cases/", "案例管理"],
     ["settings", "/admin/settings/", "网站设置"],
     ["audit", "/admin/audit/", "操作日志"],
   ]
@@ -1380,6 +1381,72 @@ function adminToolsBody() {
 </dialog>`;
 }
 
+function adminCasesBody() {
+  return `
+<div class="a-page-head">
+  <div>
+    <span class="a-eyebrow">Cases</span>
+    <h1>案例管理</h1>
+    <p>学员案例与首页、/cases/ 栏目共用同一套数据。草稿与下架案例普通访客不可见。</p>
+  </div>
+  <button class="btn btn-primary btn-sm" type="button" data-new-case>新建案例</button>
+</div>
+<div class="a-toolbar">
+  <input class="a-input" id="case-search" type="search" placeholder="搜索案例标题或 slug">
+  <select class="a-input" id="case-status">
+    <option value="">全部状态</option>
+    <option value="published">已发布</option>
+    <option value="draft">草稿</option>
+    <option value="archived">已下架</option>
+  </select>
+  <button class="btn btn-ghost btn-sm" type="button" id="case-search-btn">筛选</button>
+</div>
+<div class="a-table-wrap">
+  <table class="a-table">
+    <thead>
+      <tr><th>案例</th><th>分类</th><th>状态</th><th>首页展示</th><th>排序</th><th>更新时间</th><th class="a-right">操作</th></tr>
+    </thead>
+    <tbody id="case-rows">
+      <tr><td colspan="7" class="a-empty">加载中…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<dialog class="a-dialog a-dialog-wide" id="case-dialog">
+  <form id="case-form" class="a-form">
+    <div class="a-dialog-head">
+      <h2 id="case-dialog-title">新建案例</h2>
+      <button type="button" class="a-close" data-close-dialog aria-label="关闭">×</button>
+    </div>
+    <div class="a-form-grid">
+      <label class="a-field"><span>案例标题 *</span><input name="title" maxlength="120" required placeholder="例如：宠物用品店 3 个月做到月销 5 万美金"></label>
+      <label class="a-field"><span>访问路径（slug）*</span><input name="slug" maxlength="80" required placeholder="例如：pet-store-case"></label>
+      <label class="a-field"><span>案例分类</span><input name="category" maxlength="60" placeholder="例如：宠物用品 / 家居"></label>
+      <label class="a-field"><span>状态</span><select name="status"><option value="draft">草稿</option><option value="published">发布</option><option value="archived">下架</option></select></label>
+      <label class="a-field"><span>排序（越小越靠前）</span><input name="sort_order" type="number" min="0" max="9999" value="0"></label>
+      <label class="a-field"><span>首页展示</span><select name="show_on_home"><option value="0">不在首页展示</option><option value="1">在首页展示</option></select></label>
+      <label class="a-field"><span>发布时间</span><input name="published_at" type="datetime-local"></label>
+      <label class="a-field"><span>外部链接（选填）</span><input name="external_link" maxlength="300" placeholder="https://…"></label>
+    </div>
+    <label class="a-field"><span>摘要（列表与首页卡片用）</span><textarea name="summary" rows="2" maxlength="300" placeholder="一句话说明这个案例的亮点"></textarea></label>
+    <div class="a-media-bar">
+      <span>封面图片</span>
+      <input type="file" id="case-cover" accept="image/png,image/jpeg,image/webp,image/gif">
+      <button class="btn btn-ghost btn-sm" type="button" id="case-cover-upload">上传封面</button>
+      <span class="a-hint" id="case-cover-hint">支持 JPG / PNG / WebP / GIF，5 MB 以内。</span>
+    </div>
+    <label class="a-field"><span>封面地址</span><input name="cover_image" id="case-cover-url" maxlength="300" placeholder="上传后自动填入，也可手动填写 /media/… 地址"></label>
+    <label class="a-field"><span>正文（Markdown）*</span><textarea name="body" rows="14" class="a-code-input" placeholder="## 背景&#10;&#10;案例正文…"></textarea></label>
+    <p class="a-form-alert" id="case-alert" hidden></p>
+    <div class="a-dialog-foot">
+      <span class="a-hint" id="case-meta"></span>
+      <button class="btn btn-ghost btn-sm" type="button" data-close-dialog>取消</button>
+      <button class="btn btn-primary btn-sm" type="submit" id="case-submit">保存</button>
+    </div>
+  </form>
+</dialog>`;
+}
+
 function adminResourcesBody() {
   return `
 <div class="a-page-head">
@@ -1509,6 +1576,7 @@ async function handleAdminPage(request, env, url, admin) {
     "/admin/content/": { title: "课程管理", active: "content", page: "content", body: adminContentBody() },
     "/admin/resources/": { title: "资料管理", active: "resources", page: "resources", body: adminResourcesBody() },
     "/admin/tools/": { title: "工具管理", active: "tools", page: "tools", body: adminToolsBody() },
+    "/admin/cases/": { title: "案例管理", active: "cases", page: "cases", body: adminCasesBody() },
     "/admin/settings/": { title: "网站设置", active: "settings", page: "settings", body: "" },
     "/admin/audit/": { title: "操作日志", active: "audit", page: "audit", body: adminAuditBody() },
   };
@@ -2160,6 +2228,23 @@ async function handlePublicLibrary(request, env, ctx, url) {
   }
 
   const rendered = renderMarkdown(row.body);
+  // 免费课程附件（PDF 等）与正文同权限：公开展示、免登录下载
+  const attachment = await env.DB.prepare(
+    "SELECT file_name, file_size, file_type FROM content_files WHERE content_id = ?"
+  )
+    .bind(row.id)
+    .first();
+  const attachmentHtml = attachment
+    ? `<div class="m-attach">
+      <div>
+        <b>课程附件</b>
+        <span>${escapeHtml(attachment.file_name)}${
+          attachment.file_size ? ` · ${(Number(attachment.file_size) / 1024 / 1024).toFixed(2)} MB` : ""
+        }</span>
+      </div>
+      <a class="btn btn-ghost btn-sm" href="/courses/${escapeHtml(row.slug)}/attachment">下载附件</a>
+    </div>`
+    : "";
   const tocHtml = rendered.toc.length >= 2
     ? `<div class="m-aside-card"><h3>本篇目录</h3><div class="m-toc">${rendered.toc
         .filter((t) => t.level === 2)
@@ -2183,6 +2268,7 @@ async function handlePublicLibrary(request, env, ctx, url) {
         <span>更新 ${formatDate(row.updated_at)}</span>
       </div>
     </div>
+    ${attachmentHtml}
     <article class="prose m-article-body">${rendered.html}</article>
     <div class="m-note" style="margin-top:40px;">
       <span class="m-note-ico" aria-hidden="true">i</span>
@@ -2255,6 +2341,112 @@ async function handlePublicCourseList(request, env) {
 </div>`;
 
   return new Response(publicShell({ title: "免费课程", description: "独立站春哥免费课程，无需登录即可阅读。", body }), {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
+  });
+}
+
+/* --------------------------- 公开学员案例 --------------------------- */
+
+function caseCardHtml(item) {
+  const cover = item.cover_image
+    ? `<img src="${escapeHtml(item.cover_image)}" alt="${escapeHtml(item.title)}" loading="lazy">`
+    : `<span class="case-cover-placeholder" aria-hidden="true">案例</span>`;
+  return `<a class="case-card" href="/cases/${escapeHtml(item.slug)}/">
+  <div class="case-top">${cover}</div>
+  <span class="case-niche">${escapeHtml(item.category || "学员案例")}</span>
+  <h3>${escapeHtml(item.title)}</h3>
+  ${item.summary ? `<p class="case-quote">${escapeHtml(item.summary)}</p>` : ""}
+</a>`;
+}
+
+async function handlePublicCaseList(request, env) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return fail(405, "method_not_allowed", "不支持该请求方法。");
+  }
+
+  const rows =
+    (
+      await env.DB.prepare(
+        `SELECT title, slug, cover_image, summary, category, published_at, created_at
+           FROM cases WHERE status = 'published'
+          ORDER BY sort_order ASC, COALESCE(published_at, created_at) DESC, id DESC`
+      ).all()
+    ).results || [];
+
+  const listHtml = rows.length
+    ? `<div class="case-grid">${rows.map(caseCardHtml).join("")}</div>`
+    : `<p style="color:var(--muted);font-size:13px;">学员案例正在整理中，可以先去<a href="/courses/" style="color:var(--orange-deep);">免费课程</a>看看。</p>`;
+
+  const body = `
+<div class="m-page-head">
+  <h1>学员案例</h1>
+  <p>真实学员的独立站实战记录：从选品、建站到出单的全过程复盘。</p>
+</div>
+<div style="margin-top:24px;">${listHtml}</div>`;
+
+  return new Response(publicShell({ title: "学员案例", description: "独立站春哥学员案例，真实独立站实战复盘。", body }), {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
+  });
+}
+
+async function handlePublicCaseDetail(request, env, url) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return fail(405, "method_not_allowed", "不支持该请求方法。");
+  }
+
+  const slug = url.pathname.replace(/^\/cases\//, "").replace(/\/$/, "");
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
+    return new Response("页面不存在", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
+
+  const row = await env.DB.prepare("SELECT * FROM cases WHERE slug = ? AND status = 'published'").bind(slug).first();
+  if (!row) {
+    return new Response(
+      publicShell({
+        title: "案例不存在",
+        description: "案例不存在或尚未发布。",
+        body: `<div class="m-page-head"><h1>案例不存在或尚未发布</h1><p>可以返回案例列表查看其他学员案例。</p></div><a class="btn btn-primary" href="/cases/">返回学员案例</a>`,
+      }),
+      { status: 404, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS } }
+    );
+  }
+
+  const rendered = renderMarkdown(row.body);
+  const coverHtml = row.cover_image
+    ? `<img class="case-detail-cover" src="${escapeHtml(row.cover_image)}" alt="${escapeHtml(row.title)}">`
+    : "";
+  const linkHtml = row.external_link
+    ? `<p style="margin-top:20px;"><a class="btn btn-ghost btn-sm" href="${escapeHtml(row.external_link)}" target="_blank" rel="noopener nofollow">查看相关链接 ↗</a></p>`
+    : "";
+
+  const body = `
+<div class="m-article-layout">
+  <div>
+    <div class="m-crumb" style="margin-bottom:18px;">
+      <a href="/">首页</a><span>/</span><a href="/cases/">学员案例</a><span>/</span><span>${escapeHtml(row.category || "案例")}</span>
+    </div>
+    <div class="m-article-head">
+      <div style="display:flex;gap:8px;align-items:center;"><span class="m-tag soon">${escapeHtml(row.category || "学员案例")}</span></div>
+      <h1>${escapeHtml(row.title)}</h1>
+      <div class="m-article-meta">
+        <span>发布 ${formatDate(row.published_at || row.created_at)}</span>
+        <span>更新 ${formatDate(row.updated_at)}</span>
+      </div>
+    </div>
+    ${coverHtml}
+    <article class="prose m-article-body">${rendered.html}</article>
+    ${linkHtml}
+  </div>
+  <aside class="m-aside">
+    <div class="m-aside-card">
+      <h3>会员专享</h3>
+      <p style="margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--muted);">体系课程、网页工具与可下载资料，凭专属访问码进入。</p>
+      <a class="btn btn-primary btn-sm" style="margin-top:14px;" href="/member/">了解会员</a>
+    </div>
+  </aside>
+</div>`;
+
+  return new Response(publicShell({ title: row.title, description: row.summary || row.title, body }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
   });
 }
@@ -2382,6 +2574,59 @@ function normalizeToolInput(body) {
   const sortOrder = Math.max(0, Math.min(9999, asInt(body.sort_order, 0)));
 
   return { name, slug, entryUrl, intro, usageText, accessLevel, status, sortOrder };
+}
+
+function normalizeCaseInput(body) {
+  const title = String(body.title || "").trim();
+  if (!title || title.length > 120) {
+    return { error: "invalid_title", message: "案例标题不能为空，且不超过 120 个字。" };
+  }
+
+  const slug = String(body.slug || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]{0,80}$/.test(slug)) {
+    return { error: "invalid_slug", message: "访问路径只能使用小写字母、数字和短横线。" };
+  }
+
+  const coverImage = String(body.cover_image || "").trim();
+  if (coverImage && (!/^\/media\/[a-z0-9-]+\.(jpg|jpeg|png|webp|gif)$/.test(coverImage) || coverImage.length > 300)) {
+    return { error: "invalid_cover", message: "封面图片必须是站内 /media/ 图片地址，请先上传封面。" };
+  }
+
+  const externalLink = String(body.external_link || "").trim();
+  if (externalLink && (!/^https?:\/\//i.test(externalLink) || externalLink.length > 300)) {
+    return { error: "invalid_link", message: "外部链接必须以 http:// 或 https:// 开头。" };
+  }
+
+  const text = String(body.body || "");
+  if (text.length > 200000) {
+    return { error: "body_too_long", message: "正文超过 20 万字符，请拆分为多篇。" };
+  }
+
+  const summary = String(body.summary || "").trim().slice(0, 300);
+  const category = String(body.category || "").trim().slice(0, 60);
+  const status = ["draft", "published", "archived"].includes(body.status) ? body.status : "draft";
+  const sortOrder = Math.max(0, Math.min(9999, asInt(body.sort_order, 0)));
+  const showOnHome = body.show_on_home === 1 || body.show_on_home === "1" || body.show_on_home === true ? 1 : 0;
+
+  let publishedAt = String(body.published_at || "").trim();
+  if (publishedAt) {
+    const parsed = Date.parse(publishedAt);
+    publishedAt = Number.isFinite(parsed) ? new Date(parsed).toISOString() : "";
+  }
+
+  return {
+    title,
+    slug,
+    coverImage,
+    summary,
+    body: text,
+    category,
+    externalLink,
+    status,
+    sortOrder,
+    showOnHome,
+    publishedAt,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -3212,6 +3457,8 @@ async function handleApi(request, env, ctx, url) {
     if (["draft", "published", "archived"].includes(status)) {
       where.push("c.status = ?");
       params.push(status);
+    } else {
+      where.push("c.status != 'deleted'");
     }
     const sql = `SELECT c.id, c.title, c.slug, c.category_id, c.excerpt, c.access_level, c.content_type,
                         c.status, c.sort_order, c.created_at, c.updated_at, c.published_at,
@@ -3364,6 +3611,33 @@ async function handleApi(request, env, ctx, url) {
     });
 
     return json({ ok: true, item: { id: contentId, status } });
+  }
+
+  const contentDeleteMatch = path.match(/^\/api\/admin\/contents\/(\d+)\/delete$/);
+  if (contentDeleteMatch && method === "POST") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const contentId = parseInt(contentDeleteMatch[1], 10);
+    const row = await env.DB.prepare("SELECT id, title, slug, status FROM contents WHERE id = ?")
+      .bind(contentId)
+      .first();
+    if (!row) return fail(404, "not_found", "内容不存在。");
+    if (row.status === "deleted") return fail(400, "already_deleted", "该内容已被删除。");
+
+    // 软删除：保留正文、附件记录与历史日志；slug 改写释放唯一索引占用，R2 文件保留不清理
+    const newSlug = `${row.slug}--del-${contentId}`.slice(0, 160);
+    await env.DB.prepare("UPDATE contents SET status = 'deleted', slug = ?, updated_at = ? WHERE id = ?")
+      .bind(newSlug, nowIso(), contentId)
+      .run();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "content.delete",
+      detail: `#${contentId} ${row.slug} ${row.title} 删除成功`,
+    });
+
+    return json({ ok: true, item: { id: contentId } });
   }
 
   /* ---------------- 课程附件（R2 私有存储） ---------------- */
@@ -3531,7 +3805,7 @@ async function handleApi(request, env, ctx, url) {
   if (path === "/api/admin/tools" && method === "GET") {
     const auth = await requireAdmin(request, env);
     if (auth.error) return auth.error;
-    const rows = await env.DB.prepare("SELECT * FROM tools ORDER BY sort_order, id").all();
+    const rows = await env.DB.prepare("SELECT * FROM tools WHERE status != 'deleted' ORDER BY sort_order, id").all();
     return json({ ok: true, items: rows.results || [] });
   }
 
@@ -3640,6 +3914,32 @@ async function handleApi(request, env, ctx, url) {
     return json({ ok: true, item: { id: toolId, status } });
   }
 
+  const toolDeleteMatch = path.match(/^\/api\/admin\/tools\/(\d+)\/delete$/);
+  if (toolDeleteMatch && method === "POST") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const toolId = parseInt(toolDeleteMatch[1], 10);
+    const row = await env.DB.prepare("SELECT id, name, slug, status FROM tools WHERE id = ?")
+      .bind(toolId)
+      .first();
+    if (!row) return fail(404, "not_found", "工具不存在。");
+    if (row.status === "deleted") return fail(400, "already_deleted", "该工具已被删除。");
+
+    // 软删除：slug 改写释放唯一索引占用，历史记录保留
+    const newSlug = `${row.slug}--del-${toolId}`.slice(0, 160);
+    await env.DB.prepare("UPDATE tools SET status = 'deleted', slug = ?, updated_at = ? WHERE id = ?")
+      .bind(newSlug, nowIso(), toolId)
+      .run();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "tool.delete",
+      detail: `#${toolId} ${row.slug} ${row.name} 删除成功`,
+    });
+    return json({ ok: true, item: { id: toolId } });
+  }
+
   /* ---------------- 资料管理 ---------------- */
 
   if (path === "/api/admin/resources" && method === "GET") {
@@ -3648,6 +3948,7 @@ async function handleApi(request, env, ctx, url) {
     const rows = await env.DB.prepare(
       `SELECT r.*, c.name AS category_name
          FROM resources r LEFT JOIN content_categories c ON c.id = r.category_id
+        WHERE r.status != 'deleted'
         ORDER BY r.updated_at DESC, r.id DESC LIMIT 300`
     ).all();
     return json({ ok: true, items: rows.results || [] });
@@ -3766,6 +4067,32 @@ async function handleApi(request, env, ctx, url) {
     return json({ ok: true, item: { id: resourceId, status } });
   }
 
+  const resourceDeleteMatch = path.match(/^\/api\/admin\/resources\/(\d+)\/delete$/);
+  if (resourceDeleteMatch && method === "POST") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const resourceId = parseInt(resourceDeleteMatch[1], 10);
+    const row = await env.DB.prepare("SELECT id, title, file_key, status FROM resources WHERE id = ?")
+      .bind(resourceId)
+      .first();
+    if (!row) return fail(404, "not_found", "资料不存在。");
+    if (row.status === "deleted") return fail(400, "already_deleted", "该资料已被删除。");
+
+    // 软删除：保留数据库记录与 R2 文件（避免误删共用文件），下载记录与审计日志不受影响
+    await env.DB.prepare("UPDATE resources SET status = 'deleted', updated_at = ? WHERE id = ?")
+      .bind(nowIso(), resourceId)
+      .run();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "resource.delete",
+      detail: `#${resourceId} ${row.title} ${row.file_key || ""} 删除成功`,
+    });
+
+    return json({ ok: true, item: { id: resourceId } });
+  }
+
   // ---------- 上传资料文件到 R2 私有存储 ----------
   const resourceFileMatch = path.match(/^\/api\/admin\/resources\/(\d+)\/file$/);
   if (resourceFileMatch) {
@@ -3833,6 +4160,194 @@ async function handleApi(request, env, ctx, url) {
       ok: true,
       item: { id: resourceId, file_key: fileKey, file_name: safeName, file_type: ext, file_size: file.size },
     });
+  }
+
+  /* ---------------- 案例管理 ---------------- */
+
+  if (path === "/api/admin/cases" && method === "GET") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+
+    const q = (url.searchParams.get("q") || "").trim();
+    const status = (url.searchParams.get("status") || "").trim();
+    const where = [];
+    const params = [];
+    if (q) {
+      where.push("(title LIKE ? OR slug LIKE ?)");
+      params.push(`%${q}%`, `%${q}%`);
+    }
+    if (["draft", "published", "archived"].includes(status)) {
+      where.push("status = ?");
+      params.push(status);
+    } else {
+      where.push("status != 'deleted'");
+    }
+    const rows = await env.DB.prepare(
+      `SELECT id, title, slug, cover_image, summary, category, external_link, status,
+              sort_order, show_on_home, created_at, updated_at, published_at
+         FROM cases ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+        ORDER BY sort_order ASC, updated_at DESC, id DESC LIMIT 300`
+    )
+      .bind(...params)
+      .all();
+    return json({ ok: true, items: rows.results || [] });
+  }
+
+  if (path === "/api/admin/cases" && method === "POST") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const body = await readJson(request);
+    if (!body) return fail(400, "invalid_body", "请求格式不正确。");
+
+    const input = normalizeCaseInput(body);
+    if (input.error) return fail(400, input.error, input.message);
+
+    const exists = await env.DB.prepare("SELECT id FROM cases WHERE slug = ?").bind(input.slug).first();
+    if (exists) return fail(409, "slug_taken", "该访问路径（slug）已被占用，请换一个。");
+
+    const now = nowIso();
+    const publishedAt = input.status === "published" ? input.publishedAt || now : input.publishedAt || null;
+    const result = await env.DB.prepare(
+      `INSERT INTO cases (title, slug, cover_image, summary, body, category, external_link, status,
+                          sort_order, show_on_home, created_at, updated_at, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+      .bind(
+        input.title, input.slug, input.coverImage, input.summary, input.body, input.category,
+        input.externalLink, input.status, input.sortOrder, input.showOnHome, now, now, publishedAt
+      )
+      .run();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "case.create",
+      detail: `${input.slug} ${input.title}`,
+    });
+
+    return json({ ok: true, item: { id: Number(result.meta.last_row_id), slug: input.slug, status: input.status } });
+  }
+
+  const caseIdMatch = path.match(/^\/api\/admin\/cases\/(\d+)$/);
+  if (caseIdMatch) {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const caseId = parseInt(caseIdMatch[1], 10);
+    const row = await env.DB.prepare("SELECT * FROM cases WHERE id = ?").bind(caseId).first();
+    if (!row) return fail(404, "not_found", "案例不存在。");
+
+    if (method === "GET") {
+      return json({ ok: true, item: row });
+    }
+
+    if (method === "POST") {
+      const body = await readJson(request);
+      if (!body) return fail(400, "invalid_body", "请求格式不正确。");
+      const input = normalizeCaseInput({ ...row, ...body });
+      if (input.error) return fail(400, input.error, input.message);
+
+      const slugTaken = await env.DB.prepare("SELECT id FROM cases WHERE slug = ? AND id <> ?")
+        .bind(input.slug, caseId)
+        .first();
+      if (slugTaken) return fail(409, "slug_taken", "该访问路径（slug）已被占用，请换一个。");
+
+      const now = nowIso();
+      const publishedAt =
+        input.status === "published" ? input.publishedAt || row.published_at || now : input.publishedAt || null;
+      await env.DB.prepare(
+        `UPDATE cases SET title = ?, slug = ?, cover_image = ?, summary = ?, body = ?, category = ?,
+                          external_link = ?, status = ?, sort_order = ?, show_on_home = ?,
+                          updated_at = ?, published_at = ?
+          WHERE id = ?`
+      )
+        .bind(
+          input.title, input.slug, input.coverImage, input.summary, input.body, input.category,
+          input.externalLink, input.status, input.sortOrder, input.showOnHome, now, publishedAt, caseId
+        )
+        .run();
+
+      audit(ctx, env.DB, {
+        actorType: "admin",
+        actorId: auth.admin.id,
+        action: "case.update",
+        detail: `${input.slug} ${input.status}`,
+      });
+
+      return json({ ok: true, item: { id: caseId, slug: input.slug, status: input.status } });
+    }
+
+    return fail(405, "method_not_allowed", "不支持该请求方法。");
+  }
+
+  const caseStatusMatch = path.match(/^\/api\/admin\/cases\/(\d+)\/status$/);
+  if (caseStatusMatch && method === "POST") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const caseId = parseInt(caseStatusMatch[1], 10);
+    const body = await readJson(request);
+    const status = body && body.status;
+    if (!["draft", "published", "archived"].includes(status)) {
+      return fail(400, "invalid_status", "案例状态不正确。");
+    }
+    const row = await env.DB.prepare("SELECT id, title, slug, published_at FROM cases WHERE id = ?")
+      .bind(caseId)
+      .first();
+    if (!row) return fail(404, "not_found", "案例不存在。");
+
+    const now = nowIso();
+    const publishedAt = status === "published" ? row.published_at || now : row.published_at || null;
+    await env.DB.prepare("UPDATE cases SET status = ?, updated_at = ?, published_at = ? WHERE id = ?")
+      .bind(status, now, publishedAt, caseId)
+      .run();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "case.status",
+      detail: `${row.slug} ${status}`,
+    });
+
+    return json({ ok: true, item: { id: caseId, status } });
+  }
+
+  const caseDeleteMatch = path.match(/^\/api\/admin\/cases\/(\d+)\/delete$/);
+  if (caseDeleteMatch && method === "POST") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const caseId = parseInt(caseDeleteMatch[1], 10);
+    const row = await env.DB.prepare("SELECT id, title, slug, status FROM cases WHERE id = ?")
+      .bind(caseId)
+      .first();
+    if (!row) return fail(404, "not_found", "案例不存在。");
+    if (row.status === "deleted") return fail(400, "already_deleted", "该案例已被删除。");
+
+    // 软删除：slug 改写释放唯一索引占用，记录与审计日志保留
+    const newSlug = `${row.slug}--del-${caseId}`.slice(0, 160);
+    await env.DB.prepare("UPDATE cases SET status = 'deleted', slug = ?, updated_at = ? WHERE id = ?")
+      .bind(newSlug, nowIso(), caseId)
+      .run();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "case.delete",
+      detail: `#${caseId} ${row.slug} ${row.title} 删除成功`,
+    });
+
+    return json({ ok: true, item: { id: caseId } });
+  }
+
+  /* ---------------- 公开案例（首页学员案例板块） ---------------- */
+
+  if (path === "/api/public/cases" && method === "GET") {
+    const rows = await env.DB.prepare(
+      `SELECT title, slug, cover_image, summary, category
+         FROM cases
+        WHERE status = 'published' AND show_on_home = 1
+        ORDER BY sort_order ASC, COALESCE(published_at, created_at) DESC, id DESC
+        LIMIT 6`
+    ).all();
+    return json({ ok: true, items: rows.results || [] });
   }
 
   return fail(404, "not_found", "接口不存在。");
@@ -4085,6 +4600,14 @@ async function handleRequest(request, env, ctx, url) {
       // 公开免费内容（仅 access_level = free 且已发布的内容）
       if (url.pathname.startsWith("/library/")) {
         return await handlePublicLibrary(request, env, ctx, url);
+      }
+
+      // 公开学员案例：列表与详情都只读取已发布案例（与首页板块同一套数据）
+      if (url.pathname === "/cases" || url.pathname === "/cases/") {
+        return await handlePublicCaseList(request, env);
+      }
+      if (url.pathname.startsWith("/cases/")) {
+        return await handlePublicCaseDetail(request, env, url);
       }
 
       // 会员工具页：服务端校验会员身份与工具发布状态后再返回页面
