@@ -443,6 +443,27 @@
 
   var contentState = { q: "", status: "" };
   var contentEditingId = null;
+  var contentAttachment = null;
+
+  function syncAttachment(attachment) {
+    contentAttachment = attachment || null;
+    var hint = $("#content-attach-hint");
+    var removeBtn = $("#content-attach-remove");
+    if (!hint || !removeBtn) return;
+
+    if (!contentEditingId) {
+      hint.textContent = "先保存课程，再上传附件（≤200 MB）。";
+      removeBtn.hidden = true;
+      return;
+    }
+    if (contentAttachment) {
+      hint.textContent = "当前附件：" + contentAttachment.file_name;
+      removeBtn.hidden = false;
+    } else {
+      hint.textContent = "尚未上传附件，≤200 MB，存 R2 私有存储，仅授权用户可下载。";
+      removeBtn.hidden = true;
+    }
+  }
 
   function renderContents(items) {
     var rows = $("#content-rows");
@@ -462,7 +483,8 @@
             : '<button class="a-mini" data-act="publish" data-id="' + c.id + '">发布</button>');
 
         return "<tr><td><span class=\"a-cell-title\">" + esc(c.title) + '</span><span class="a-cell-sub mono">' +
-          esc(c.slug) + " · " + (c.body_length || 0) + " 字符</span></td>" +
+          esc(c.slug) + " · " + (c.body_length || 0) + " 字符" +
+          (c.attachment_name ? " · 附件 " + esc(c.attachment_name) : "") + "</span></td>" +
           "<td>" + esc(c.category_name || "未分类") + "</td>" +
           "<td>" + accessTag(c.access_level) + "</td>" +
           "<td>" + statusTag(c.status) + "</td>" +
@@ -535,6 +557,7 @@
           form.elements.body.value = data.item.body || "";
           $("#content-meta").textContent =
             "创建 " + fmt(data.item.created_at) + " · 更新 " + fmt(data.item.updated_at);
+          syncAttachment(data.item.attachment);
         } else {
           contentEditingId = null;
           $("#content-dialog-title").textContent = "新建课程";
@@ -543,6 +566,7 @@
           form.elements.status.value = "draft";
           form.elements.sort_order.value = 0;
           $("#content-meta").textContent = "正文支持 Markdown，保存草稿不会出现在会员中心。";
+          syncAttachment(null);
         }
         dialog.showModal();
       })
@@ -611,6 +635,74 @@
         } finally {
           imageBtn.disabled = false;
           imageBtn.textContent = "上传并插入";
+        }
+      });
+    }
+
+    var attachBtn = $("#content-attach-upload");
+    if (attachBtn) {
+      attachBtn.addEventListener("click", async function () {
+        if (!contentEditingId) {
+          showAlert(alertEl, "请先保存课程，再上传附件。");
+          return;
+        }
+        var input = $("#content-attach");
+        var file = input && input.files && input.files[0];
+        if (!file) {
+          showAlert(alertEl, "请选择要上传的附件。");
+          return;
+        }
+
+        attachBtn.disabled = true;
+        attachBtn.textContent = "上传中…";
+        hideAlert(alertEl);
+        try {
+          var fd = new FormData();
+          fd.append("file", file);
+          var res = await fetch("/api/admin/contents/" + contentEditingId + "/attachment", {
+            method: "POST",
+            credentials: "same-origin",
+            body: fd,
+          });
+          var data = await res.json().catch(function () {
+            return null;
+          });
+          if (res.status === 401) {
+            location.href = "/admin/";
+            return;
+          }
+          if (!res.ok || !data || !data.ok) {
+            throw new Error((data && data.message) || "附件上传失败，请稍后重试。");
+          }
+          syncAttachment(data.item);
+          toast("附件已上传");
+          loadContents();
+        } catch (err) {
+          showAlert(alertEl, err.message);
+        } finally {
+          attachBtn.disabled = false;
+          attachBtn.textContent = "上传附件";
+        }
+      });
+    }
+
+    var attachRemoveBtn = $("#content-attach-remove");
+    if (attachRemoveBtn) {
+      attachRemoveBtn.addEventListener("click", async function () {
+        if (!contentEditingId || !contentAttachment) return;
+        if (!window.confirm("删除后会员将无法下载该附件，确认删除？")) return;
+
+        attachRemoveBtn.disabled = true;
+        hideAlert(alertEl);
+        try {
+          await api("/api/admin/contents/" + contentEditingId + "/attachment/remove", { method: "POST" });
+          syncAttachment(null);
+          toast("附件已删除");
+          loadContents();
+        } catch (err) {
+          showAlert(alertEl, err.message);
+        } finally {
+          attachRemoveBtn.disabled = false;
         }
       });
     }
@@ -1051,6 +1143,40 @@
     load();
   }
 
+  /* ---------------- 网站设置 ---------------- */
+
+  function initSettings() {
+    var form = $("#settings-form");
+    if (!form) return;
+
+    var alertEl = $("#settings-alert");
+    var submit = $("#settings-submit");
+
+    form.addEventListener("submit", async function (event) {
+      event.preventDefault();
+      hideAlert(alertEl);
+      submit.disabled = true;
+
+      var payload = {
+        brand_name: form.elements.brand_name.value,
+        tagline: form.elements.tagline.value,
+        intro: form.elements.intro.value,
+        wechat: form.elements.wechat.value,
+        footer_text: form.elements.footer_text.value,
+      };
+
+      try {
+        await api("/api/admin/settings", { method: "POST", body: payload });
+        showAlert(alertEl, "设置已保存，约 1 分钟后所有页面生效。", true);
+        toast("网站设置已保存");
+      } catch (err) {
+        showAlert(alertEl, err.message);
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  }
+
   /* ---------------- 入口 ---------------- */
 
   if (page === "login" || page === "setup") {
@@ -1065,5 +1191,6 @@
   else if (page === "content") initContent();
   else if (page === "resources") initResources();
   else if (page === "tools") initTools();
+  else if (page === "settings") initSettings();
   else if (page === "audit") initAudit();
 })();

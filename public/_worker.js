@@ -742,6 +742,112 @@ function shortDate(value) {
   return d ? d.replace(/-/g, ".") : "—";
 }
 
+/* ------------------------------------------------------------------ */
+/* 网站基础设置                                                        */
+/* ------------------------------------------------------------------ */
+
+const SITE_DEFAULT = {
+  brand_name: "独立站春哥",
+  tagline: "独立站出海实战教学与创业陪跑",
+  intro: "帮助独立站新手从选品、建站、营销到实现第一单。",
+  wechat: "ch022427",
+  footer_text: "© 2026 独立站春哥（亿级操盘手）｜带教咨询微信：ch022427",
+};
+
+const SITE_LIMITS = { brand_name: 30, tagline: 60, intro: 200, wechat: 40, footer_text: 160 };
+
+// 设置命中率极高、改动很少，按 Worker 实例缓存 60 秒，避免每个页面都查库
+let siteCache = { at: 0, value: null };
+
+async function loadSite(env) {
+  const now = Date.now();
+  if (siteCache.value && now - siteCache.at < 60000) return siteCache.value;
+
+  const site = { ...SITE_DEFAULT };
+  try {
+    const rows = (await env.DB.prepare("SELECT key, value FROM settings").all()).results || [];
+    for (const row of rows) {
+      const value = typeof row.value === "string" ? row.value.trim() : "";
+      if (row.key in SITE_DEFAULT && value) site[row.key] = value;
+    }
+  } catch {
+    // settings 表尚未建立时使用默认值
+  }
+  siteCache = { at: now, value: site };
+  return site;
+}
+
+function resetSiteCache() {
+  siteCache = { at: 0, value: null };
+}
+
+function siteChanged(site) {
+  return Object.keys(SITE_DEFAULT).some((key) => site[key] !== SITE_DEFAULT[key]);
+}
+
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 页面文案里的品牌名、微信、定位、简介与页脚都是固定默认文案，
+ * 这里按整词替换成后台设置值，静态页与 Worker 渲染页都能统一生效。
+ */
+function rewriteSiteText(html, site) {
+  const map = new Map();
+  if (site.footer_text !== SITE_DEFAULT.footer_text) map.set(SITE_DEFAULT.footer_text, site.footer_text);
+  if (site.tagline !== SITE_DEFAULT.tagline) map.set(SITE_DEFAULT.tagline, site.tagline);
+  if (site.intro !== SITE_DEFAULT.intro) map.set(SITE_DEFAULT.intro, site.intro);
+  if (site.brand_name !== SITE_DEFAULT.brand_name) map.set(SITE_DEFAULT.brand_name, site.brand_name);
+  if (site.wechat !== SITE_DEFAULT.wechat) map.set(SITE_DEFAULT.wechat, site.wechat);
+  if (!map.size) return html;
+
+  const pattern = new RegExp([...map.keys()].map(escapeRegExp).join("|"), "g");
+  return html.replace(pattern, (match) => map.get(match));
+}
+
+/** 统一在出口处给 HTML 页面套用网站设置（只改文案，不改逻辑） */
+async function applySiteSettings(response, request, env) {
+  const type = response.headers.get("Content-Type") || "";
+  if (!type.includes("text/html") || request.method === "HEAD") return response;
+
+  let site;
+  try {
+    site = await loadSite(env);
+  } catch {
+    return response;
+  }
+  if (!siteChanged(site)) return response;
+
+  const html = await response.text();
+  const rewritten = rewriteSiteText(html, site);
+
+  const headers = new Headers(response.headers);
+  headers.delete("Content-Length");
+  headers.delete("ETag");
+  headers.delete("Last-Modified");
+  return new Response(rewritten, { status: response.status, headers });
+}
+
+function normalizeSiteInput(body) {
+  const values = {};
+  for (const key of Object.keys(SITE_DEFAULT)) {
+    const raw = typeof body[key] === "string" ? body[key] : "";
+    const value = raw.replace(/[<>]/g, "").trim();
+    if (!value) {
+      values[key] = SITE_DEFAULT[key];
+      continue;
+    }
+    if (value.length > SITE_LIMITS[key]) {
+      return { error: "invalid_settings", message: `字段内容过长，请控制在 ${SITE_LIMITS[key]} 个字符以内。` };
+    }
+    values[key] = value;
+  }
+  if (!values.brand_name) return { error: "invalid_settings", message: "品牌名称不能为空。" };
+  if (!values.wechat) return { error: "invalid_settings", message: "咨询微信不能为空。" };
+  return values;
+}
+
 function accessTag(level) {
   return level === "free"
     ? '<span class="m-tag free">免费</span>'
@@ -1000,6 +1106,7 @@ function adminShell({ title, active, admin, page, body }) {
     ["content", "/admin/content/", "课程管理"],
     ["resources", "/admin/resources/", "资料管理"],
     ["tools", "/admin/tools/", "工具管理"],
+    ["settings", "/admin/settings/", "网站设置"],
     ["audit", "/admin/audit/", "操作日志"],
   ]
     .map(
@@ -1205,6 +1312,13 @@ function adminContentBody() {
       <button class="btn btn-ghost btn-sm" type="button" id="content-image-upload">上传并插入</button>
       <span class="a-hint" id="content-image-hint">支持 JPG / PNG / WebP / GIF，5 MB 以内。</span>
     </div>
+    <div class="a-media-bar">
+      <span>课程附件</span>
+      <input type="file" id="content-attach">
+      <button class="btn btn-ghost btn-sm" type="button" id="content-attach-upload">上传附件</button>
+      <button class="btn btn-ghost btn-sm" type="button" id="content-attach-remove" hidden>删除附件</button>
+      <span class="a-hint" id="content-attach-hint">保存课程后可上传，≤200 MB，存 R2 私有存储，仅授权用户可下载。</span>
+    </div>
     <p class="a-form-alert" id="content-alert" hidden></p>
     <div class="a-dialog-foot">
       <span class="a-hint" id="content-meta"></span>
@@ -1345,6 +1459,42 @@ function adminAuditBody() {
 </div>`;
 }
 
+function adminSettingsBody(site) {
+  const field = (name, label, hint, maxlength, tag) => {
+    const value = escapeHtml(site[name] || SITE_DEFAULT[name]);
+    const control =
+      tag === "textarea"
+        ? `<textarea name="${name}" rows="3" maxlength="${maxlength}">${value}</textarea>`
+        : `<input name="${name}" maxlength="${maxlength}" value="${value}">`;
+    return `<label class="a-field"><span>${label}</span>${control}<small class="a-hint">${hint}</small></label>`;
+  };
+
+  return `
+<div class="a-page-head">
+  <div>
+    <span class="a-eyebrow">Site Settings</span>
+    <h1>网站设置</h1>
+    <p>这里修改的是全站文案（品牌名、定位、简介、微信与页脚），保存后约 1 分钟内对所有页面生效。页面结构与权限不受影响。</p>
+  </div>
+</div>
+<form class="a-form a-settings-form" id="settings-form">
+  <div class="a-form-grid">
+    ${field("brand_name", "品牌名称", "显示在导航、页脚与浏览器标题。", 30)}
+    ${field("wechat", "带教咨询微信", "页脚、会员中心与工具页都会使用这个微信号。", 40)}
+  </div>
+  <div class="a-form-grid">
+    ${field("tagline", "网站定位", "首页标题与简介中出现的定位语。", 60)}
+  </div>
+  ${field("intro", "网站简介", "首页介绍文案，一句话说明帮谁解决什么问题。", 200, "textarea")}
+  ${field("footer_text", "页脚版权与联系方式", "整行替换页脚文案，包含年份与微信。", 160)}
+  <p class="a-form-alert" id="settings-alert" hidden></p>
+  <div class="a-dialog-foot">
+    <span class="a-hint">留空会恢复为默认文案；请勿填写 HTML 标签。</span>
+    <button class="btn btn-primary btn-sm" type="submit" id="settings-submit">保存设置</button>
+  </div>
+</form>`;
+}
+
 async function handleAdminPage(request, env, url, admin) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return fail(405, "method_not_allowed", "不支持该请求方法。");
@@ -1357,8 +1507,10 @@ async function handleAdminPage(request, env, url, admin) {
     "/admin/content/": { title: "课程管理", active: "content", page: "content", body: adminContentBody() },
     "/admin/resources/": { title: "资料管理", active: "resources", page: "resources", body: adminResourcesBody() },
     "/admin/tools/": { title: "工具管理", active: "tools", page: "tools", body: adminToolsBody() },
+    "/admin/settings/": { title: "网站设置", active: "settings", page: "settings", body: "" },
     "/admin/audit/": { title: "操作日志", active: "audit", page: "audit", body: adminAuditBody() },
   };
+  if (path === "/admin/settings/") pages[path].body = adminSettingsBody(await loadSite(env));
   const page = pages[path];
   if (!page) {
     return new Response(
@@ -1612,6 +1764,22 @@ async function renderCourseDetail(env, member, slug) {
   const next = currentIndex >= 0 && currentIndex < siblings.length - 1 ? siblings[currentIndex + 1] : null;
 
   const rendered = renderMarkdown(row.body);
+  const attachment = await env.DB.prepare(
+    "SELECT file_name, file_size, file_type FROM content_files WHERE content_id = ?"
+  )
+    .bind(row.id)
+    .first();
+  const attachmentHtml = attachment
+    ? `<div class="m-attach">
+      <div>
+        <b>课程附件</b>
+        <span>${escapeHtml(attachment.file_name)}${
+          attachment.file_size ? ` · ${(Number(attachment.file_size) / 1024 / 1024).toFixed(2)} MB` : ""
+        }</span>
+      </div>
+      <a class="btn btn-ghost btn-sm" href="/courses/${escapeHtml(row.slug)}/attachment">下载附件</a>
+    </div>`
+    : "";
   const tocHtml = rendered.toc.length >= 2
     ? `<div class="m-aside-card"><h3>本篇目录</h3><div class="m-toc">${rendered.toc
         .filter((t) => t.level === 2)
@@ -1649,6 +1817,7 @@ async function renderCourseDetail(env, member, slug) {
         ${row.excerpt ? `<span>${escapeHtml(row.excerpt)}</span>` : ""}
       </div>
     </div>
+    ${attachmentHtml}
     <article class="prose m-article-body">${rendered.html}</article>
     <div class="m-article-foot">
       <span>${prev ? `<a href="/member/app/courses/${escapeHtml(prev.slug)}">← ${escapeHtml(prev.title)}</a>` : "<span>已经是第一篇</span>"}</span>
@@ -2914,6 +3083,45 @@ async function handleApi(request, env, ctx, url) {
     });
   }
 
+  /* ---------------- 网站基础设置 ---------------- */
+
+  if (path === "/api/admin/settings" && method === "GET") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    return json({ ok: true, item: await loadSite(env), defaults: SITE_DEFAULT });
+  }
+
+  if (path === "/api/admin/settings" && method === "POST") {
+    if (!originAllowed(request)) return fail(403, "forbidden_origin", "请求来源不被允许。");
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+
+    const body = await readJson(request);
+    if (!body) return fail(400, "invalid_body", "请求格式不正确。");
+    const values = normalizeSiteInput(body);
+    if (values.error) return fail(400, values.error, values.message);
+
+    const now = nowIso();
+    for (const [key, value] of Object.entries(values)) {
+      await env.DB.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+        .bind(key, value, now)
+        .run();
+    }
+    resetSiteCache();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "settings.update",
+      detail: values.brand_name,
+    });
+
+    return json({ ok: true, item: values });
+  }
+
   /* ---------------- 分类 ---------------- */
 
   if (path === "/api/admin/categories" && method === "GET") {
@@ -2945,8 +3153,10 @@ async function handleApi(request, env, ctx, url) {
     }
     const sql = `SELECT c.id, c.title, c.slug, c.category_id, c.excerpt, c.access_level, c.content_type,
                         c.status, c.sort_order, c.created_at, c.updated_at, c.published_at,
-                        cat.name AS category_name, LENGTH(c.body) AS body_length
+                        cat.name AS category_name, LENGTH(c.body) AS body_length,
+                        cf.file_name AS attachment_name
                    FROM contents c LEFT JOIN content_categories cat ON cat.id = c.category_id
+                   LEFT JOIN content_files cf ON cf.content_id = c.id
                    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
                   ORDER BY c.updated_at DESC, c.id DESC LIMIT 300`;
     const rows = await env.DB.prepare(sql).bind(...params).all();
@@ -3009,7 +3219,10 @@ async function handleApi(request, env, ctx, url) {
     if (!row) return fail(404, "not_found", "内容不存在。");
 
     if (method === "GET") {
-      return json({ ok: true, item: row });
+      const attachment = await env.DB.prepare("SELECT * FROM content_files WHERE content_id = ?")
+        .bind(contentId)
+        .first();
+      return json({ ok: true, item: { ...row, attachment: attachment || null } });
     }
 
     if (method === "POST") {
@@ -3089,6 +3302,106 @@ async function handleApi(request, env, ctx, url) {
     });
 
     return json({ ok: true, item: { id: contentId, status } });
+  }
+
+  /* ---------------- 课程附件（R2 私有存储） ---------------- */
+
+  const contentAttachmentMatch = path.match(/^\/api\/admin\/contents\/(\d+)\/attachment$/);
+  if (contentAttachmentMatch && method === "POST") {
+    if (!originAllowed(request)) return fail(403, "forbidden_origin", "请求来源不被允许。");
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    if (!env.R2) {
+      return fail(503, "r2_not_configured", "尚未配置 R2 私有存储，请先按部署说明绑定存储桶。");
+    }
+
+    const contentId = parseInt(contentAttachmentMatch[1], 10);
+    const row = await env.DB.prepare("SELECT id, slug, title FROM contents WHERE id = ?").bind(contentId).first();
+    if (!row) return fail(404, "not_found", "课程不存在。");
+
+    const contentType = request.headers.get("Content-Type") || "";
+    if (!contentType.includes("multipart/form-data")) {
+      return fail(400, "invalid_body", "请使用文件上传表单提交。");
+    }
+
+    let form;
+    try {
+      form = await request.formData();
+    } catch {
+      return fail(400, "invalid_body", "上传数据解析失败，请重试。");
+    }
+
+    const file = form.get("file");
+    if (!file || typeof file === "string" || !file.size) {
+      return fail(400, "missing_file", "请选择要上传的附件。");
+    }
+    if (file.size > 200 * 1024 * 1024) {
+      return fail(413, "file_too_large", "单个附件不能超过 200 MB。");
+    }
+
+    const originalName = String(file.name || "file");
+    const safeName = originalName
+      .replace(/[^\w.\- \u4e00-\u9fa5]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(-90) || "file";
+    const rawExt = safeName.includes(".") ? safeName.split(".").pop().toLowerCase() : "";
+    const ext = /^[a-z0-9]{1,12}$/.test(rawExt) ? rawExt : "bin";
+    const fileKey = `courses/${contentId}/${Date.now().toString(36)}-${randomHex(4)}.${ext}`;
+
+    await env.R2.put(fileKey, file.stream(), {
+      httpMetadata: { contentType: file.type || "application/octet-stream" },
+    });
+
+    const previous = await env.DB.prepare("SELECT file_key FROM content_files WHERE content_id = ?")
+      .bind(contentId)
+      .first();
+    const now = nowIso();
+    await env.DB.prepare(
+      `INSERT INTO content_files (content_id, file_key, file_name, file_type, file_size, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(content_id) DO UPDATE SET file_key = excluded.file_key, file_name = excluded.file_name,
+         file_type = excluded.file_type, file_size = excluded.file_size, updated_at = excluded.updated_at`
+    )
+      .bind(contentId, fileKey, safeName, ext, file.size, now, now)
+      .run();
+
+    if (previous && previous.file_key && previous.file_key !== fileKey) {
+      await env.R2.delete(previous.file_key).catch(() => {});
+    }
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "content.attachment",
+      detail: `${row.slug} ${fileKey}`,
+    });
+
+    return json({ ok: true, item: { file_key: fileKey, file_name: safeName, file_type: ext, file_size: file.size } });
+  }
+
+  const contentAttachmentRemoveMatch = path.match(/^\/api\/admin\/contents\/(\d+)\/attachment\/remove$/);
+  if (contentAttachmentRemoveMatch && method === "POST") {
+    if (!originAllowed(request)) return fail(403, "forbidden_origin", "请求来源不被允许。");
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+
+    const contentId = parseInt(contentAttachmentRemoveMatch[1], 10);
+    const file = await env.DB.prepare("SELECT file_key FROM content_files WHERE content_id = ?")
+      .bind(contentId)
+      .first();
+    if (!file) return fail(404, "not_found", "该课程没有附件。");
+
+    await env.DB.prepare("DELETE FROM content_files WHERE content_id = ?").bind(contentId).run();
+    if (env.R2) await env.R2.delete(file.file_key).catch(() => {});
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "content.attachment.remove",
+      detail: String(contentId),
+    });
+
+    return json({ ok: true });
   }
 
   /* ---------------- 课程正文配图上传（公开图片） ---------------- */
@@ -3429,7 +3742,7 @@ async function handleApi(request, env, ctx, url) {
 
     const originalName = String(file.name || "file");
     const safeName = originalName
-      .replace(/[^\w.\-\u4e00-\u9fa5]+/g, "_")
+      .replace(/[^\w.\- \u4e00-\u9fa5]+/g, "_")
       .replace(/^_+|_+$/g, "")
       .slice(-90) || "file";
     const rawExt = safeName.includes(".") ? safeName.split(".").pop().toLowerCase() : "";
@@ -3494,6 +3807,103 @@ async function handleMedia(request, env, url) {
       "X-Content-Type-Options": "nosniff",
     },
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* 课程附件下载：免费课程公开，会员课程先校验会话                      */
+/* ------------------------------------------------------------------ */
+
+async function handleContentAttachment(request, env, ctx, slug) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method Not Allowed", { status: 405, headers: BASE_HEADERS });
+  }
+
+  const course = await env.DB.prepare(
+    "SELECT id, title, access_level FROM contents WHERE slug = ? AND status = 'published'"
+  )
+    .bind(slug)
+    .first();
+  if (!course) {
+    return statePage({
+      title: "附件不存在",
+      heading: "课程不存在或尚未发布",
+      message: "该课程可能已下架，请返回课程列表查看最新内容。",
+      actionHref: "/member/app/courses/",
+      actionText: "返回课程列表",
+      status: 404,
+    });
+  }
+
+  let session = { state: "anonymous" };
+  if (course.access_level === "member") {
+    session = await getMemberSession(request, env);
+    if (session.state === "blocked") {
+      return statePage({
+        title: "会员权限不可用",
+        heading: "当前会员权限暂不可用",
+        message: "会员状态异常，请联系管理员核对后再试。",
+        memberCode: session.member ? session.member.member_code : "",
+        actionHref: "/member/",
+        actionText: "返回访问码登录",
+        status: 403,
+      });
+    }
+    if (session.state !== "active") {
+      const next = encodeURIComponent(`/member/app/courses/${slug}`);
+      return Response.redirect(`${new URL(request.url).origin}/member/?next=${next}`, 302);
+    }
+  }
+
+  const file = await env.DB.prepare("SELECT * FROM content_files WHERE content_id = ?").bind(course.id).first();
+  if (!file || !env.R2) {
+    return statePage({
+      title: "附件尚未上传",
+      heading: "该课程暂无可下载附件",
+      message: "管理员上传附件后会出现在课程页面，请稍后再试。",
+      actionHref: `/member/app/courses/${slug}`,
+      actionText: "返回课程正文",
+      status: 404,
+    });
+  }
+
+  const object = await env.R2.get(file.file_key);
+  if (!object) {
+    return statePage({
+      title: "附件暂不可用",
+      heading: "附件文件不存在",
+      message: "文件可能正在更新版本，请稍后再试或联系管理员。",
+      actionHref: `/member/app/courses/${slug}`,
+      actionText: "返回课程正文",
+      status: 404,
+    });
+  }
+
+  if (session.member) {
+    audit(ctx, env.DB, {
+      actorType: "member",
+      actorId: session.member.id,
+      action: "content.attachment",
+      detail: `${course.id} ${course.title}`,
+    });
+  }
+
+  const asciiName = String(file.file_name || "attachment").replace(/[^\x20-\x7e]/g, "_");
+  return new Response(request.method === "HEAD" ? null : object.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(
+        file.file_name || "attachment"
+      )}`,
+      "Cache-Control": "private, no-store",
+      ...BASE_HEADERS,
+    },
+  });
+}
+
+function requestUrl(request) {
+  const url = new URL(request.url);
+  return url.origin;
 }
 
 /* ------------------------------------------------------------------ */
@@ -3568,10 +3978,7 @@ async function handleToolPage(request, env, url) {
 /* 入口                                                                */
 /* ------------------------------------------------------------------ */
 
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-
+async function handleRequest(request, env, ctx, url) {
     try {
       if (url.pathname.startsWith("/api/")) {
         return await handleApi(request, env, ctx, url);
@@ -3638,6 +4045,12 @@ export default {
         return await handleAdminPage(request, env, url, admin);
       }
 
+      // 课程附件：免费课程对所有人开放，会员课程由服务端校验会话
+      const attachmentMatch = url.pathname.match(/^\/courses\/([a-z0-9][a-z0-9-]*)\/attachment\/?$/);
+      if (attachmentMatch) {
+        return await handleContentAttachment(request, env, ctx, attachmentMatch[1]);
+      }
+
       if (!env.ASSETS) return new Response("Not Found", { status: 404 });
       const res = await env.ASSETS.fetch(request);
       return withBaseHeaders(res);
@@ -3650,6 +4063,17 @@ export default {
         status: 500,
         headers: { "Content-Type": "text/plain; charset=utf-8", ...BASE_HEADERS },
       });
+    }
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const response = await handleRequest(request, env, ctx, url);
+    try {
+      return await applySiteSettings(response, request, env);
+    } catch {
+      return response;
     }
   },
 };

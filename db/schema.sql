@@ -151,6 +151,29 @@ CREATE TABLE IF NOT EXISTS tools (
 );
 
 -- ------------------------------------------------------------
+-- 网站基础设置（键值存储，未写入时使用代码内默认值）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- ------------------------------------------------------------
+-- 课程附件（文件本体在 R2 私有存储，每篇课程一个附件）
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS content_files (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  content_id INTEGER NOT NULL UNIQUE REFERENCES contents(id),
+  file_key   TEXT    NOT NULL,                      -- R2 object key
+  file_name  TEXT    NOT NULL,
+  file_type  TEXT,
+  file_size  INTEGER,
+  created_at TEXT    NOT NULL,
+  updated_at TEXT    NOT NULL
+);
+
+-- ------------------------------------------------------------
 -- 安全操作日志
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS audit_logs (

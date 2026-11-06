@@ -732,6 +732,212 @@ let memberCookie = "";
   pass("公开图片路由只接受合法文件名");
 }
 
+/* ---------------- 21. 第五轮：网站基础设置 ---------------- */
+{
+  const anon = await call("/api/admin/settings");
+  assert.equal(anon.res.status, 401);
+  pass("未登录无法读取网站设置");
+
+  const read = await call("/api/admin/settings", { cookie: adminCookie });
+  assert.equal(read.res.status, 200);
+  assert.equal(read.data.item.brand_name, "独立站春哥");
+  pass("管理员可读取网站设置默认值");
+
+  const saved = await call("/api/admin/settings", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      brand_name: "春哥独立站实验室",
+      tagline: "独立站实战教学与陪跑",
+      intro: "帮新手把第一个独立站跑通。",
+      wechat: "chun_test_wechat",
+      footer_text: "© 2026 春哥独立站实验室｜微信 chun_test_wechat",
+    },
+  });
+  assert.equal(saved.res.status, 200, saved.text);
+  pass("管理员可保存网站设置");
+
+  const staticPage = await call("/");
+  assert.equal(staticPage.res.status, 200);
+  assert.match(staticPage.text, /static/);
+  pass("设置生效后没有命中替换的页面仍可完整返回");
+
+  const page = await call("/library/what-is-dtc");
+  assert.match(page.text, /春哥独立站实验室/);
+  assert.match(page.text, /chun_test_wechat/);
+  pass("公开页面按设置替换品牌与微信");
+
+  const tooLong = await call("/api/admin/settings", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { brand_name: "春".repeat(40), wechat: "x", tagline: "y", intro: "z", footer_text: "f" },
+  });
+  assert.equal(tooLong.res.status, 400);
+  assert.equal(tooLong.data.error, "invalid_settings");
+  pass("超长品牌名被拒绝");
+
+  const reset = await call("/api/admin/settings", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { brand_name: "", tagline: "", intro: "", wechat: "", footer_text: "" },
+  });
+  assert.equal(reset.res.status, 200);
+  const pageBack = await call("/library/what-is-dtc");
+  assert.match(pageBack.text, /独立站春哥/);
+  assert.ok(!pageBack.text.includes("春哥独立站实验室"));
+  pass("留空可恢复默认文案");
+}
+
+/* ---------------- 22. 第五轮：课程附件（R2 私有下载） ---------------- */
+{
+  const r2Store = new Map();
+  const r2Env = {
+    ...env,
+    R2: {
+      async put(key, value) {
+        r2Store.set(key, Buffer.from(await new Response(value).arrayBuffer()));
+        return { key };
+      },
+      async get(key) {
+        const buf = r2Store.get(key);
+        return buf ? { body: buf, size: buf.length } : null;
+      },
+      async delete(key) {
+        r2Store.delete(key);
+      },
+    },
+  };
+
+  async function rcall(path, opts) {
+    const res = await worker.fetch(req(path, opts), r2Env, ctx);
+    const text = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+    return { res, data, text };
+  }
+
+  async function upload(path, cookie, content, filename, type) {
+    const form = new FormData();
+    form.append("file", new File([content], filename, { type }));
+    const headers = new Headers({ Origin: ORIGIN, "CF-Connecting-IP": "10.0.0.240" });
+    if (cookie) headers.set("Cookie", cookie);
+    const res = await worker.fetch(
+      new Request(ORIGIN + path, { method: "POST", headers, body: form }),
+      r2Env,
+      ctx
+    );
+    const text = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+    return { res, data, text };
+  }
+
+  const member = await call("/api/admin/members", { method: "POST", body: { name: "附件测试会员" }, cookie: adminCookie });
+  const login = await call("/api/member/login", { method: "POST", body: { code: member.data.access_code } });
+  const cookie = setCookieToken(login.res);
+
+  const course = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "带附件的会员课程",
+      slug: "attach-member-course",
+      access_level: "member",
+      status: "published",
+      body: "## 附件课程\n\n正文",
+    },
+  });
+  assert.equal(course.res.status, 200, course.text);
+  const courseId = course.data.item.id;
+
+  const freeCourse = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "带附件的免费课程",
+      slug: "attach-free-course",
+      access_level: "free",
+      status: "published",
+      body: "## 免费课程\n\n正文",
+    },
+  });
+  assert.equal(freeCourse.res.status, 200, freeCourse.text);
+
+  const anonUpload = await upload("/api/admin/contents/" + courseId + "/attachment", "", "pdf-body", "sop.pdf", "application/pdf");
+  assert.equal(anonUpload.res.status, 401);
+  pass("未登录无法上传课程附件");
+
+  const memberUpload = await upload("/api/admin/contents/" + courseId + "/attachment", cookie, "pdf-body", "sop.pdf", "application/pdf");
+  assert.equal(memberUpload.res.status, 401);
+  pass("会员无法上传课程附件");
+
+  const adminUpload = await upload(
+    "/api/admin/contents/" + courseId + "/attachment",
+    adminCookie,
+    "%PDF-1.4 test attachment",
+    "会员 SOP.pdf",
+    "application/pdf"
+  );
+  assert.equal(adminUpload.res.status, 200, adminUpload.text);
+  assert.equal(adminUpload.data.item.file_name, "会员 SOP.pdf");
+  pass("管理员可上传课程附件到私有存储");
+
+  const noLogin = await rcall("/courses/attach-member-course/attachment");
+  assert.equal(noLogin.res.status, 302);
+  assert.match(noLogin.res.headers.get("Location") || "", /\/member\/\?next=/);
+  pass("未登录下载会员课程附件会被引导登录");
+
+  const download = await rcall("/courses/attach-member-course/attachment", { cookie });
+  assert.equal(download.res.status, 200);
+  assert.match(download.text, /%PDF-1\.4 test attachment/);
+  assert.match(download.res.headers.get("Content-Disposition") || "", /attachment/);
+  pass("会员可下载课程附件且不暴露公开地址");
+
+  const freeUpload = await upload(
+    "/api/admin/contents/" + freeCourse.data.item.id + "/attachment",
+    adminCookie,
+    "free-file-body",
+    "免费清单.txt",
+    "text/plain"
+  );
+  assert.equal(freeUpload.res.status, 200, freeUpload.text);
+  const freeDownload = await rcall("/courses/attach-free-course/attachment");
+  assert.equal(freeDownload.res.status, 200);
+  assert.match(freeDownload.text, /free-file-body/);
+  pass("免费课程附件可被访客下载");
+
+  const coursePage = await rcall("/member/app/courses/attach-member-course", { cookie });
+  assert.match(coursePage.text, /课程附件/);
+  assert.match(coursePage.text, /\/courses\/attach-member-course\/attachment/);
+  pass("课程正文显示附件下载入口");
+
+  const removed = await call("/api/admin/contents/" + courseId + "/attachment/remove", {
+    method: "POST",
+    cookie: adminCookie,
+  });
+  assert.equal(removed.res.status, 200);
+  const gone = await rcall("/courses/attach-member-course/attachment", { cookie });
+  assert.equal(gone.res.status, 404);
+  pass("删除附件后下载入口立即失效");
+
+  await call(`/api/admin/contents/${freeCourse.data.item.id}/status`, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { status: "archived" },
+  });
+  const archived = await rcall("/courses/attach-free-course/attachment");
+  assert.equal(archived.res.status, 404);
+  pass("课程下架后附件同时失效");
+}
+
 await Promise.all(pending);
 
 console.log(`\n共 ${results.length} 项服务端测试全部通过。`);
