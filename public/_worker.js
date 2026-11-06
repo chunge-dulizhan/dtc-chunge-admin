@@ -1747,15 +1747,9 @@ async function renderMemberHome(env, member) {
 }
 
 async function renderCourseIndex(env, member) {
-  const { cats, grouped } = await loadCourseData(env);
+  const { cats, items, grouped } = await loadCourseData(env);
 
-  const blocks = cats
-    .map((cat, index) => {
-      const items = grouped.get(cat.id) || [];
-      const rows = items.length
-        ? items
-            .map(
-              (item, i) => `<div class="m-row">
+  const rowHtml = (item, i) => `<div class="m-row">
   <span class="m-row-num">${String(i + 1).padStart(2, "0")}</span>
   <div class="m-row-main">
     <a class="m-row-title" href="/member/app/courses/${escapeHtml(item.slug)}">${escapeHtml(item.title)} ${accessTag(item.access_level)}</a>
@@ -1763,9 +1757,13 @@ async function renderCourseIndex(env, member) {
   </div>
   <div class="m-row-meta"><span>${shortDate(item.published_at || item.updated_at)}</span></div>
   <span class="m-row-arrow" aria-hidden="true">→</span>
-</div>`
-            )
-            .join("")
+</div>`;
+
+  const blocks = cats
+    .map((cat, index) => {
+      const items = grouped.get(cat.id) || [];
+      const rows = items.length
+        ? items.map(rowHtml).join("")
         : '<p class="m-empty-row">该模块内容准备中，敬请期待。</p>';
 
       return `<div class="m-cat">
@@ -1781,6 +1779,23 @@ async function renderCourseIndex(env, member) {
 </div>`;
     })
     .join("");
+
+  // 未分类（或分类已不存在）的已发布课程也必须可见，保证与后台数据一致
+  const catIds = new Set(cats.map((c) => c.id));
+  const uncategorized = items.filter((it) => !catIds.has(it.category_id));
+  const uncategorizedHtml = uncategorized.length
+    ? `<div class="m-cat">
+  <div class="m-cat-head">
+    <span class="m-cat-idx">${String(cats.length + 1).padStart(2, "0")}</span>
+    <div>
+      <p class="m-cat-name">未分类</p>
+      <p class="m-cat-desc">尚未归类到模块的课程，可在后台课程设置分类。</p>
+    </div>
+    <span class="m-cat-count">${uncategorized.length} 篇</span>
+  </div>
+  ${uncategorized.map(rowHtml).join("")}
+</div>`
+    : "";
 
   return memberShell({
     title: "图文实战课程",
@@ -1798,7 +1813,7 @@ async function renderCourseIndex(env, member) {
   <div><b>学习建议：</b>每个模块先读路线图，再按顺序做一遍。不要只收藏不动手，独立站的进步来自一次次小规模测试。</div>
 </div>
 
-<div class="m-cats">${blocks}</div>`,
+<div class="m-cats">${blocks}${uncategorizedHtml}</div>`,
   });
 }
 
@@ -2266,6 +2281,7 @@ async function handlePublicLibrary(request, env, ctx, url) {
       <div class="m-article-meta">
         <span>发布 ${formatDate(row.published_at || row.created_at)}</span>
         <span>更新 ${formatDate(row.updated_at)}</span>
+        ${row.excerpt ? `<span>${escapeHtml(row.excerpt)}</span>` : ""}
       </div>
     </div>
     ${attachmentHtml}

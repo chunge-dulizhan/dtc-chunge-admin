@@ -1286,33 +1286,47 @@
     function openEditor(id) {
       if (!dialog || !form) return;
       hideAlert(alertEl);
-      var item = cache.filter(function (c) { return c.id === id; })[0];
 
-      if (item) {
-        editingId = item.id;
-        $("#case-dialog-title").textContent = "编辑案例";
-        form.elements.title.value = item.title || "";
-        form.elements.slug.value = item.slug || "";
-        form.elements.category.value = item.category || "";
-        form.elements.status.value = item.status || "draft";
-        form.elements.sort_order.value = item.sort_order || 0;
-        form.elements.show_on_home.value = item.show_on_home ? "1" : "0";
-        form.elements.published_at.value = toLocalInput(item.published_at);
-        form.elements.external_link.value = item.external_link || "";
-        form.elements.summary.value = item.summary || "";
-        form.elements.cover_image.value = item.cover_image || "";
-        form.elements.body.value = item.body || "";
-        $("#case-meta").textContent = "创建 " + fmt(item.created_at) + " · 更新 " + fmt(item.updated_at);
-      } else {
-        editingId = null;
-        $("#case-dialog-title").textContent = "新建案例";
-        form.reset();
-        form.elements.status.value = "draft";
-        form.elements.sort_order.value = 0;
-        form.elements.show_on_home.value = "0";
-        $("#case-meta").textContent = "发布后前台 /cases/ 立即可见；勾选首页展示才会出现在首页板块。";
+      function populate(item) {
+        if (item) {
+          editingId = item.id;
+          $("#case-dialog-title").textContent = "编辑案例";
+          form.elements.title.value = item.title || "";
+          form.elements.slug.value = item.slug || "";
+          form.elements.category.value = item.category || "";
+          form.elements.status.value = item.status || "draft";
+          form.elements.sort_order.value = item.sort_order || 0;
+          form.elements.show_on_home.value = item.show_on_home ? "1" : "0";
+          form.elements.published_at.value = toLocalInput(item.published_at);
+          form.elements.external_link.value = item.external_link || "";
+          form.elements.summary.value = item.summary || "";
+          form.elements.cover_image.value = item.cover_image || "";
+          form.elements.body.value = item.body || "";
+          $("#case-meta").textContent = "创建 " + fmt(item.created_at) + " · 更新 " + fmt(item.updated_at);
+        } else {
+          editingId = null;
+          $("#case-dialog-title").textContent = "新建案例";
+          form.reset();
+          form.elements.status.value = "draft";
+          form.elements.sort_order.value = 0;
+          form.elements.show_on_home.value = "0";
+          $("#case-meta").textContent = "发布后前台 /cases/ 立即可见；勾选首页展示才会出现在首页板块。";
+        }
+        dialog.showModal();
       }
-      dialog.showModal();
+
+      if (id) {
+        // 列表接口不返回正文，编辑时必须拉取完整记录，避免空正文覆盖原内容
+        api("/api/admin/cases/" + id)
+          .then(function (data) {
+            populate(data.item);
+          })
+          .catch(function (err) {
+            toast(err.message, true);
+          });
+        return;
+      }
+      populate(null);
     }
 
     async function setStatus(id, status, button) {

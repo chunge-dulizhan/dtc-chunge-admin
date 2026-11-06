@@ -1280,6 +1280,144 @@ let memberCookie = "";
   pass("首页展示开关只影响首页板块，不影响 /cases/ 列表");
 }
 
+/* ---------------- 26. 第五轮：案例编辑字段保留 ---------------- */
+{
+  const created = await call("/api/admin/cases", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "字段保留案例",
+      slug: "keep-fields-case",
+      category: "家居",
+      summary: "原摘要",
+      status: "published",
+      show_on_home: 1,
+      body: "## 第一段\n\n正文内容。\n\n![图](/media/keep.png)\n\n## 第二段\n\n结尾。",
+    },
+  });
+  assert.equal(created.res.status, 200, created.text);
+  const keepId = created.data.item.id;
+
+  // 只更新封面：正文及其余字段必须保留
+  const coverOnly = await call(`/api/admin/cases/${keepId}`, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { cover_image: "/media/new-cover.png" },
+  });
+  assert.equal(coverOnly.res.status, 200, coverOnly.text);
+  let detail = await call(`/api/admin/cases/${keepId}`, { cookie: adminCookie });
+  assert.equal(detail.data.item.body, "## 第一段\n\n正文内容。\n\n![图](/media/keep.png)\n\n## 第二段\n\n结尾。", "只换封面不得改动正文");
+  assert.equal(detail.data.item.cover_image, "/media/new-cover.png");
+  assert.equal(detail.data.item.title, "字段保留案例", "未提交字段必须保留原值");
+  assert.equal(detail.data.item.summary, "原摘要", "未提交字段必须保留原值");
+  assert.equal(detail.data.item.category, "家居", "未提交字段必须保留原值");
+  pass("案例只更换封面时正文与其他字段完整保留");
+
+  // 只更新标题：正文与封面保留
+  await call(`/api/admin/cases/${keepId}`, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "改名保留案例" },
+  });
+  detail = await call(`/api/admin/cases/${keepId}`, { cookie: adminCookie });
+  assert.equal(detail.data.item.title, "改名保留案例");
+  assert.match(detail.data.item.body, /第二段/, "只改标题不得改动正文");
+  assert.equal(detail.data.item.cover_image, "/media/new-cover.png", "只改标题不得改动封面");
+  pass("案例只修改标题时其他字段完整保留");
+
+  // 前台详情仍渲染原正文图片
+  const pubDetail = await call("/cases/keep-fields-case/");
+  assert.equal(pubDetail.res.status, 200);
+  assert.match(pubDetail.text, /\/media\/keep\.png/, "前台详情必须渲染正文图片");
+  pass("案例前台详情正文渲染与后台保存一致");
+
+  // 显式提交空正文才允许清空
+  await call(`/api/admin/cases/${keepId}`, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { body: "" },
+  });
+  detail = await call(`/api/admin/cases/${keepId}`, { cookie: adminCookie });
+  assert.equal(detail.data.item.body, "", "显式提交空正文才允许清空");
+  pass("案例仅在显式提交空正文时才清空");
+
+  // 新建功能不受编辑修复影响
+  const fresh = await call("/api/admin/cases", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "新建回归案例", slug: "fresh-case", body: "新建正文" },
+  });
+  assert.equal(fresh.res.status, 200, fresh.text);
+  const freshDetail = await call(`/api/admin/cases/${fresh.data.item.id}`, { cookie: adminCookie });
+  assert.equal(freshDetail.data.item.body, "新建正文");
+  pass("新建案例功能保持正常");
+}
+
+/* ---------------- 27. 第五轮：课程内容前后台一致 ---------------- */
+{
+  // member 1 的会话在前面测试中已被登出，这里用 member 2（从未被暂停/重置）重新登录
+  const m2login = await call("/api/member/login", { method: "POST", body: { code: created[1].access_code } });
+  assert.equal(m2login.res.status, 200, m2login.text);
+  const m2Cookie = setCookieToken(m2login.res);
+
+  // 未分类已发布课程必须出现在会员课程列表（修复前会被分组渲染漏掉）
+  const uncategorized = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "未分类会员课程", slug: "uncat-member-course", access_level: "member", status: "published", body: "正文", category_id: null },
+  });
+  assert.equal(uncategorized.res.status, 200, uncategorized.text);
+  const memberIndex = await call("/member/app/courses/", { cookie: m2Cookie });
+  assert.equal(memberIndex.res.status, 200);
+  assert.match(memberIndex.text, /未分类会员课程/, "会员课程列表必须显示未分类课程");
+  assert.match(memberIndex.text, /未分类/, "会员课程列表必须包含未分类分组");
+  pass("会员课程列表显示未分类课程（与后台数据一致）");
+
+  // 后台修改免费课程后，公开前台立即同步（标题、摘要、正文）
+  const freeCourse = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "同步前标题", slug: "sync-free-course", access_level: "free", status: "published", excerpt: "原摘要", body: "原正文" },
+  });
+  assert.equal(freeCourse.res.status, 200, freeCourse.text);
+  const freeId = freeCourse.data.item.id;
+  const updFree = await call(`/api/admin/contents/${freeId}`, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "同步后标题", excerpt: "同步后摘要", body: "同步后正文" },
+  });
+  assert.equal(updFree.res.status, 200, updFree.text);
+  const freePage = await call("/library/sync-free-course/");
+  assert.equal(freePage.res.status, 200);
+  assert.match(freePage.text, /同步后标题/, "免费详情页必须显示后台最新标题");
+  assert.match(freePage.text, /同步后摘要/, "免费详情页必须显示后台最新摘要");
+  assert.match(freePage.text, /同步后正文/, "免费详情页必须显示后台最新正文");
+  const freeList = await call("/courses/");
+  assert.match(freeList.text, /同步后标题/, "免费列表必须显示后台最新标题");
+  pass("免费课程后台保存后前台列表与详情同步");
+
+  // 后台修改会员课程后，会员中心详情同步，访客仍被拦截
+  const memberCourse = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "会员同步前", slug: "sync-member-course", access_level: "member", status: "published", body: "会员正文" },
+  });
+  assert.equal(memberCourse.res.status, 200, memberCourse.text);
+  const memberId = memberCourse.data.item.id;
+  await call(`/api/admin/contents/${memberId}`, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "会员同步后" },
+  });
+  const memberPage = await call("/member/app/courses/sync-member-course", { cookie: m2Cookie });
+  assert.equal(memberPage.res.status, 200);
+  assert.match(memberPage.text, /会员同步后/, "会员详情必须显示后台最新标题");
+  assert.match(memberPage.text, /会员正文/, "会员详情必须显示后台正文");
+  const guestPage = await call("/member/app/courses/sync-member-course");
+  assert.equal(guestPage.res.status, 302, "访客访问会员课程必须跳登录");
+  pass("会员课程后台保存后会员中心同步，访客权限未削弱");
+}
+
 await Promise.all(pending);
 
 console.log(`\n共 ${results.length} 项服务端测试全部通过。`);
