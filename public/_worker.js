@@ -3801,21 +3801,32 @@ async function handleMedia(request, env, url) {
   const match = url.pathname.match(/^\/media\/([a-z0-9-]+)\.(jpg|jpeg|png|webp|gif)$/);
   if (!match) return new Response("Not Found", { status: 404 });
 
-  // 先查静态目录 public/media/ 下的文件（本地打包的静态图）
+  // 先查静态目录 public/media/ 下的文件（本地打包的静态图）。
+  // 注意：Pages 对不存在的路径会回退到 index.html 并返回 200，
+  // 所以不能只看 assetResp.ok，必须确认返回的确实是图片。
   const assetResp = await env.ASSETS.fetch(request).catch(() => null);
-  if (assetResp && assetResp.ok) return assetResp;
+  if (assetResp && assetResp.ok) {
+    const assetType = assetResp.headers.get("Content-Type") || "";
+    if (assetType.toLowerCase().startsWith("image/")) return assetResp;
+  }
 
   // 再查 R2 上传的媒体文件
-  if (!env.R2) return new Response("Not Found", { status: 404 });
+  if (!env.R2) return new Response("Not Found", { status: 404, headers: BASE_HEADERS });
   const obj = await env.R2.get(`media/${match[1]}.${match[2]}`);
-  if (!obj) return new Response("Not Found", { status: 404 });
+  if (!obj) return new Response("Not Found", { status: 404, headers: BASE_HEADERS });
+
+  const storedType = (obj.httpMetadata && obj.httpMetadata.contentType) || "";
+  const contentType = storedType.toLowerCase().startsWith("image/")
+    ? storedType
+    : MEDIA_MIME[match[2]] || "application/octet-stream";
 
   return new Response(request.method === "HEAD" ? null : obj.body, {
     status: 200,
     headers: {
-      "Content-Type": MEDIA_MIME[match[2]],
+      "Content-Type": contentType,
+      "Content-Length": String(obj.size ?? ""),
       "Cache-Control": "public, max-age=31536000, immutable",
-      "X-Content-Type-Options": "nosniff",
+      ...BASE_HEADERS,
     },
   });
 }

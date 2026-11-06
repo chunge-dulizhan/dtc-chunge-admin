@@ -741,6 +741,38 @@ let memberCookie = "";
   const traversal = await call("/media/%2e%2e%2fsecret.png");
   assert.equal(traversal.res.status, 404);
   pass("公开图片路由只接受合法文件名");
+
+  // 回归：真实 Cloudflare Pages 对不存在的路径会回退到 index.html 并返回 200，
+  // 这里必须确认 handleMedia 不会把 HTML 页面当作图片返回。
+  const htmlFallback = async () =>
+    new Response("<html>fallback</html>", {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+
+  const fbEnv = { ...env, ASSETS: { fetch: htmlFallback } };
+  const fb = await worker.fetch(req("/media/abc123.png"), fbEnv, ctx);
+  assert.equal(fb.status, 404);
+  assert.ok(!(fb.headers.get("Content-Type") || "").includes("text/html"), "不得把 HTML 回退当图片返回");
+  pass("Pages 回退 HTML 时图片路由仍返回 404");
+
+  const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const r2Env = {
+    ...fbEnv,
+    R2: {
+      get: async (key) =>
+        key === "media/abc123.png"
+          ? { body: new Response(pngBytes).body, size: pngBytes.length, httpMetadata: { contentType: "image/png" } }
+          : null,
+    },
+  };
+  const img = await worker.fetch(req("/media/abc123.png"), r2Env, ctx);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get("Content-Type"), "image/png");
+  assert.equal(img.headers.get("Cache-Control"), "public, max-age=31536000, immutable");
+  const bytes = new Uint8Array(await img.arrayBuffer());
+  assert.equal(bytes.length, pngBytes.length);
+  pass("HTML 回退环境下 R2 图片仍按二进制与正确 MIME 返回");
 }
 
 /* ---------------- 21. 第五轮：网站基础设置 ---------------- */
