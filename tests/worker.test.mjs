@@ -1709,6 +1709,15 @@ let memberCookie = "";
   assert.match(homeNav.text, /data-copy="public.nav.build"/, "建站教程导航带配置键");
   assert.match(homeNav.text, /href="\/build\/"/, "建站教程导航 href 保持 /build/");
   pass("导航链接保留 href 且仅文字可配置");
+
+  // Worker 服务端渲染页（/cases/）同样使用可配置导航，链接地址不变
+  const renderedNav = await call("/cases/");
+  assert.match(
+    renderedNav.text,
+    /<a href="\/build\/"><span data-copy="public.nav.build">建站教程<\/span><\/a>/,
+    "服务端渲染页导航必须带文案配置键并保留原 href"
+  );
+  pass("服务端渲染页导航文案可配置且链接不变");
 }
 
 await Promise.all(pending);

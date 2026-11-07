@@ -1247,28 +1247,28 @@ function publicShell({ title, description, body }) {
       </span>
     </a>
     <nav class="nav" aria-label="主导航">
-      <a href="/">首页</a>
-      <a href="/courses/">免费课程</a>
-      <a href="/guide/">独立站入门</a>
-      <a href="/products/">选品知识库</a>
-      <a href="/build/">建站教程</a>
-      <a href="/marketing/">营销知识</a>
-      <a href="/cases/">学员案例</a>
+      <a href="/"><span data-copy="public.nav.home">首页</span></a>
+      <a href="/courses/"><span data-copy="public.nav.courses">免费课程</span></a>
+      <a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span></a>
+      <a href="/products/"><span data-copy="public.nav.products">选品知识库</span></a>
+      <a href="/build/"><span data-copy="public.nav.build">建站教程</span></a>
+      <a href="/marketing/"><span data-copy="public.nav.marketing">营销知识</span></a>
+      <a href="/cases/"><span data-copy="public.nav.cases">学员案例</span></a>
     </nav>
-    <a class="btn btn-dark btn-sm header-cta" href="/member/">会员中心</a>
+    <a class="btn btn-dark btn-sm header-cta" href="/member/"><span data-copy="public.nav.member">会员中心</span></a>
     <button class="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="mobile-nav">
       <span></span><span></span><span></span>
     </button>
   </div>
 </header>
 <div class="mobile-nav" id="mobile-nav">
-  <a href="/">首页 <small>01</small></a>
-  <a href="/courses/">免费课程 <small>02</small></a>
-  <a href="/guide/">独立站入门 <small>03</small></a>
-  <a href="/products/">选品知识库 <small>04</small></a>
-  <a href="/build/">建站教程 <small>05</small></a>
-  <a href="/marketing/">营销知识 <small>06</small></a>
-  <a href="/cases/">学员案例 <small>07</small></a>
+  <a href="/"><span data-copy="public.nav.home">首页</span> <small>01</small></a>
+  <a href="/courses/"><span data-copy="public.nav.courses">免费课程</span> <small>02</small></a>
+  <a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span> <small>03</small></a>
+  <a href="/products/"><span data-copy="public.nav.products">选品知识库</span> <small>04</small></a>
+  <a href="/build/"><span data-copy="public.nav.build">建站教程</span> <small>05</small></a>
+  <a href="/marketing/"><span data-copy="public.nav.marketing">营销知识</span> <small>06</small></a>
+  <a href="/cases/"><span data-copy="public.nav.cases">学员案例</span> <small>07</small></a>
   <a class="btn btn-primary btn-block" href="/member/">进入会员中心</a>
   <p class="mobile-nav-foot">付费会员专享｜带教咨询微信 ch022427</p>
 </div>
