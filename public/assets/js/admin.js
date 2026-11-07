@@ -50,6 +50,145 @@
   }
 
   var toastTimer = null;
+  /* ---------------- 图片上传 / 光标插入（正文、章节、案例共用） ---------------- */
+
+  var savedRange = null;
+  var savedEditor = null;
+
+  // 记录最后一次在 contenteditable 中的光标位置，供图片/格式插入使用
+  document.addEventListener("selectionchange", function () {
+    var sel = window.getSelection && window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    var node = sel.anchorNode;
+    var el = node && (node.nodeType === 3 ? node.parentNode : node);
+    var ed = el && el.closest ? el.closest('[contenteditable="true"]') : null;
+    if (!ed) return;
+    savedEditor = ed;
+    try {
+      savedRange = sel.getRangeAt(0).cloneRange();
+    } catch (err) {
+      savedRange = null;
+    }
+  });
+
+  async function uploadImageFile(file) {
+    var fd = new FormData();
+    fd.append("file", file);
+    var res = await fetch("/api/admin/uploads/image", { method: "POST", credentials: "same-origin", body: fd });
+    var data = await res.json().catch(function () { return null; });
+    if (res.status === 401) {
+      location.href = "/admin/";
+      throw new Error("登录已过期，请重新登录。");
+    }
+    if (!res.ok || !data || !data.ok) {
+      throw new Error((data && data.message) || "图片上传失败，请稍后重试。");
+    }
+    return data.url;
+  }
+
+  // 在指定 contenteditable 的光标处插入图片；无光标时追加到末尾
+  function insertImageIntoEditor(editor, url) {
+    if (!editor) return false;
+    editor.focus();
+    var sel = window.getSelection();
+    if (savedEditor === editor && savedRange) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    } else if (sel.rangeCount === 0 || !editor.contains(sel.anchorNode)) {
+      var range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    var ok = document.execCommand("insertImage", false, url);
+    if (!ok) {
+      var img = document.createElement("img");
+      img.src = url;
+      img.alt = "";
+      editor.appendChild(img);
+    }
+    // 通知外部同步数据（章节编辑器依赖 input 事件）
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  // 在 textarea 的光标处插入 Markdown 图片，并保持光标可见
+  function insertImageIntoTextarea(ta, url) {
+    if (!ta) return false;
+    var insert = "\n\n![图片说明](" + url + ")\n\n";
+    var start = typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length;
+    var end = typeof ta.selectionEnd === "number" ? ta.selectionEnd : ta.value.length;
+    ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
+    ta.focus();
+    var pos = start + insert.length;
+    try { ta.setSelectionRange(pos, pos); } catch (err) {}
+    // 触发 input 事件，保证章节数据同步
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  // 从正文中提取图片地址（兼容 Markdown 与 HTML）
+  function extractImageUrls(body) {
+    var urls = [];
+    var re = /!\[[^\]]*\]\(([^)\s]+)\)|<img[^>]+src=["']([^"']+)["']/gi;
+    var m;
+    while ((m = re.exec(body || "")) !== null) {
+      var url = m[1] || m[2];
+      if (url) urls.push(url);
+    }
+    return urls;
+  }
+
+  function renderImagePreview(container, body) {
+    if (!container) return;
+    var urls = extractImageUrls(body);
+    if (!urls.length) {
+      container.innerHTML = "";
+      container.hidden = true;
+      return;
+    }
+    container.hidden = false;
+    container.innerHTML = urls
+      .map(function (u) {
+        return '<span class="a-thumb"><img src="' + esc(u) + '" alt="" loading="lazy"></span>';
+      })
+      .join("");
+  }
+
+  // 课程封面预览（打开编辑、上传、清空时共用）
+  function syncContentCoverPreview() {
+    var input = $("#content-cover-url");
+    var preview = $("#content-cover-preview");
+    var removeBtn = $("#content-cover-remove");
+    var hint = $("#content-cover-hint");
+    var url = (input && input.value || "").trim();
+    var img = preview ? preview.querySelector("img") : null;
+    if (url) {
+      if (preview) preview.hidden = false;
+      if (img) img.src = url;
+      if (hint) hint.textContent = "";
+      if (removeBtn) removeBtn.hidden = false;
+    } else {
+      if (preview) preview.hidden = true;
+      if (img) img.removeAttribute("src");
+      if (removeBtn) removeBtn.hidden = true;
+    }
+  }
+
+  function currentContentBody() {
+    if (contentFormat === "html") {
+      var rt = $("#content-rt");
+      return rt ? rt.innerHTML : "";
+    }
+    var ta = document.querySelector("#content-form textarea[name='body']");
+    return ta ? ta.value : "";
+  }
+
+  function syncContentBodyPreview() {
+    renderImagePreview($("#content-body-preview"), currentContentBody());
+  }
+
   function toast(message, isError) {
     var el = $("#a-toast");
     if (!el) return;
@@ -468,6 +607,8 @@
     }
   }
 
+  var NAV_LABEL = { guide: "独立站入门", products: "选品知识库", build: "建站教程", marketing: "营销知识" };
+
   function contentRowHtml(c) {
     var actions =
       '<button class="a-mini" data-act="edit" data-id="' + c.id + '">编辑</button>' +
@@ -478,8 +619,9 @@
 
     return "<tr><td><span class=\"a-cell-title\">" + esc(c.title) + '</span><span class="a-cell-sub mono">' +
       esc(c.slug) + " · " + (c.body_length || 0) + " 字符" +
+      (c.content_type === "chapter" ? " · 章节" : "") +
       (c.attachment_name ? " · 附件 " + esc(c.attachment_name) : "") + "</span></td>" +
-      "<td>" + esc(c.category_name || "未分类") + "</td>" +
+      "<td>" + esc(NAV_LABEL[c.nav_category] || "—") + "</td>" +
       "<td>" + accessTag(c.access_level) + "</td>" +
       "<td>" + statusTag(c.status) + "</td>" +
       '<td><span class="a-mono">' + esc(c.sort_order) + "</span></td>" +
@@ -497,24 +639,34 @@
       return;
     }
 
-    var grouped = $("#content-group-toggle") && $("#content-group-toggle").checked;
-    if (grouped) {
-      var groups = {};
-      items.forEach(function (c) {
-        var key = c.category_name || "未分类";
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(c);
+    // 固定按课程分类分组：分类排序遵循后台 sort_order，未分类排最后
+    var groups = {};
+    items.forEach(function (c) {
+      var key = c.category_id ? "cat-" + c.category_id : "uncategorized";
+      if (!groups[key]) {
+        groups[key] = {
+          name: c.category_name || "未分类",
+          sort: c.category_name ? (Number(c.category_sort_order) || 0) : Number.MAX_SAFE_INTEGER,
+          items: [],
+        };
+      }
+      groups[key].items.push(c);
+    });
+
+    var groupList = Object.keys(groups)
+      .map(function (k) { return groups[k]; })
+      .sort(function (a, b) {
+        if (a.sort !== b.sort) return a.sort - b.sort;
+        return a.name.localeCompare(b.name);
       });
-      var keys = Object.keys(groups).sort();
-      var html = "";
-      keys.forEach(function (k) {
-        html += '<tr class="a-group-row"><td colspan="7"><strong>' + esc(k) + "</strong> <span class=\"a-hint\">(" + groups[k].length + ")</span></td></tr>";
-        html += groups[k].map(contentRowHtml).join("");
-      });
-      rows.innerHTML = html;
-    } else {
-      rows.innerHTML = items.map(contentRowHtml).join("");
-    }
+
+    var html = "";
+    groupList.forEach(function (g) {
+      html += '<tr class="a-group-row"><td colspan="7"><strong>' + esc(g.name) +
+        '</strong> <span class="a-hint">' + g.items.length + " 门课程</span></td></tr>";
+      html += g.items.map(contentRowHtml).join("");
+    });
+    rows.innerHTML = html;
 
     bindContentRowActions();
   }
@@ -633,6 +785,8 @@
         }
         applyContentTypeUI();
         renderChapters();
+        syncContentCoverPreview();
+        syncContentBodyPreview();
         dialog.showModal();
       })
       .catch(function (err) {
@@ -670,8 +824,10 @@
     var isChapter = type === "chapter";
     $("#content-body-markdown").hidden = isChapter || contentFormat !== "markdown";
     $("#content-body-html").hidden = isChapter || contentFormat !== "html";
-    $("#content-rt-toolbar-wrap").hidden = contentFormat !== "html";
+    $("#content-rt-toolbar-wrap").hidden = isChapter || contentFormat !== "html";
     $("#content-chapters").hidden = !isChapter;
+    var preview = $("#content-body-preview");
+    if (preview) preview.hidden = isChapter || preview.innerHTML === "";
   }
 
   // 渲染章节目录
@@ -688,7 +844,7 @@
         var bodyField = isHtml
           ? '<div class="a-chapter-rt" contenteditable="true" data-idx="' + i + '">' + (ch.body || "") + "</div>"
           : '<textarea class="a-chapter-body" data-idx="' + i + '" rows="6" placeholder="章节正文（Markdown）…">' + esc(ch.body || "") + "</textarea>";
-        return '<div class="a-chapter-item">' +
+        return '<div class="a-chapter-item" data-ch-item="' + i + '">' +
           '<div class="a-chapter-head">' +
             '<span class="a-mono">第 ' + (i + 1) + " 章</span>" +
             '<input type="text" placeholder="章节标题" data-ch-title data-idx="' + i + '" value="' + esc(ch.title || "") + '">' +
@@ -697,9 +853,63 @@
             '<button type="button" class="a-mini danger" data-ch-del data-idx="' + i + '">删</button>' +
           "</div>" +
           bodyField +
+          '<div class="a-media-bar a-chapter-media">' +
+            '<input type="file" data-ch-file="' + i + '" accept="image/png,image/jpeg,image/webp,image/gif">' +
+            '<button type="button" class="btn btn-ghost btn-sm" data-ch-upload="' + i + '">上传并插入图片</button>' +
+            '<span class="a-hint" data-ch-hint="' + i + '"></span>' +
+          "</div>" +
+          '<div class="a-image-preview" data-ch-preview="' + i + '"' + (ch.body && extractImageUrls(ch.body).length ? "" : " hidden") + "></div>" +
           "</div>";
       })
       .join("");
+
+    // 章节图片预览
+    contentChapters.forEach(function (ch, i) {
+      renderImagePreview(list.querySelector('[data-ch-preview="' + i + '"]'), ch.body);
+    });
+
+    // 章节图片上传：每个章节独立，图片插入到该章光标位置
+    list.querySelectorAll("[data-ch-upload]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var i = +btn.getAttribute("data-ch-upload");
+        var fileInput = list.querySelector('[data-ch-file="' + i + '"]');
+        var hint = list.querySelector('[data-ch-hint="' + i + '"]');
+        var file = fileInput && fileInput.files && fileInput.files[0];
+        if (!file) {
+          toast("请先选择第 " + (i + 1) + " 章的图片", true);
+          return;
+        }
+        var originText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "上传中…";
+        if (hint) hint.textContent = "";
+        try {
+          var url = await uploadImageFile(file);
+          var item = list.querySelector('[data-ch-item="' + i + '"]');
+          var latestBody = "";
+          if (isHtml) {
+            var editor = item ? item.querySelector("div.a-chapter-rt") : null;
+            insertImageIntoEditor(editor, url);
+            latestBody = editor ? editor.innerHTML : "";
+          } else {
+            var ta = item ? item.querySelector("textarea.a-chapter-body") : null;
+            insertImageIntoTextarea(ta, url);
+            latestBody = ta ? ta.value : "";
+          }
+          if (contentChapters[i]) contentChapters[i].body = latestBody;
+          renderImagePreview(list.querySelector('[data-ch-preview="' + i + '"]'), latestBody);
+          if (hint) hint.textContent = "已插入第 " + (i + 1) + " 章：" + url;
+          toast("第 " + (i + 1) + " 章图片已插入");
+        } catch (err) {
+          if (hint) hint.textContent = "上传失败：" + err.message;
+          toast("第 " + (i + 1) + " 章图片上传失败：" + err.message, true);
+        } finally {
+          if (fileInput) fileInput.value = "";
+          btn.disabled = false;
+          btn.textContent = originText;
+        }
+      });
+    });
 
     list.querySelectorAll("[data-ch-title]").forEach(function (el) {
       el.addEventListener("input", function () {
@@ -839,46 +1049,14 @@
         imageBtn.textContent = "上传中…";
         hideAlert(alertEl);
         try {
-          var fd = new FormData();
-          fd.append("file", file);
-          var res = await fetch("/api/admin/uploads/image", {
-            method: "POST",
-            credentials: "same-origin",
-            body: fd,
-          });
-          var data = await res.json().catch(function () {
-            return null;
-          });
-          if (res.status === 401) {
-            location.href = "/admin/";
-            return;
-          }
-          if (!res.ok || !data || !data.ok) {
-            throw new Error((data && data.message) || "图片上传失败，请稍后重试。");
-          }
-
+          var url = await uploadImageFile(file);
           if (contentFormat === "html") {
-            // 富文本模式：在当前聚焦的 contenteditable 光标处插入图片
-            var target = document.activeElement;
-            if (target && target.isContentEditable) {
-              target.focus();
-              document.execCommand("insertImage", false, data.url);
-            } else {
-              var rt = $("#content-rt");
-              if (rt) {
-                rt.focus();
-                document.execCommand("insertImage", false, data.url);
-              }
-            }
+            insertImageIntoEditor($("#content-rt"), url);
           } else {
-            var ta = form.elements.body;
-            var insert = "\n\n![图片说明](" + data.url + ")\n\n";
-            var start = typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length;
-            var end = typeof ta.selectionEnd === "number" ? ta.selectionEnd : ta.value.length;
-            ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
-            ta.focus();
+            insertImageIntoTextarea(form.elements.body, url);
           }
-          if (hint) hint.textContent = "已插入： " + data.url;
+          renderImagePreview($("#content-body-preview"), collectContentBody());
+          if (hint) hint.textContent = "已插入： " + url;
           toast("图片已上传并插入正文");
         } catch (err) {
           showAlert(alertEl, err.message);
@@ -886,6 +1064,50 @@
           imageBtn.disabled = false;
           imageBtn.textContent = "上传并插入";
         }
+      });
+    }
+
+    // ---------- 封面图上传 / 更换 / 清除 ----------
+    var coverUrlInput = $("#content-cover-url");
+    var coverFileInput = $("#content-cover-file");
+    var coverUploadBtn = $("#content-cover-upload");
+    var coverRemoveBtn = $("#content-cover-remove");
+
+    if (coverUrlInput) {
+      coverUrlInput.addEventListener("input", syncContentCoverPreview);
+      coverUrlInput.addEventListener("change", syncContentCoverPreview);
+    }
+    if (coverUploadBtn) {
+      coverUploadBtn.addEventListener("click", function () {
+        if (coverFileInput) coverFileInput.click();
+      });
+    }
+    if (coverFileInput) {
+      coverFileInput.addEventListener("change", async function () {
+        var file = coverFileInput.files && coverFileInput.files[0];
+        if (!file) return;
+        var originText = coverUploadBtn.textContent;
+        coverUploadBtn.disabled = true;
+        coverUploadBtn.textContent = "上传中…";
+        hideAlert(alertEl);
+        try {
+          var url = await uploadImageFile(file);
+          if (coverUrlInput) coverUrlInput.value = url;
+          syncContentCoverPreview();
+          toast("封面已上传");
+        } catch (err) {
+          showAlert(alertEl, "封面上传失败：" + err.message);
+        } finally {
+          coverFileInput.value = "";
+          coverUploadBtn.disabled = false;
+          coverUploadBtn.textContent = originText;
+        }
+      });
+    }
+    if (coverRemoveBtn) {
+      coverRemoveBtn.addEventListener("click", function () {
+        if (coverUrlInput) coverUrlInput.value = "";
+        syncContentCoverPreview();
       });
     }
 
@@ -1020,18 +1242,13 @@
       $("#content-search-btn").click();
     });
 
-    // 按分类分组切换
-    var groupToggle = $("#content-group-toggle");
-    if (groupToggle) {
-      groupToggle.addEventListener("change", function () {
-        loadContents();
-      });
-    }
-
-    // 课程分类管理
-    initCategoryManagement(loadContents);
-
     loadContents();
+  }
+
+  /* ---------------- 课程分类管理（独立页面） ---------------- */
+
+  function initCategoriesPage() {
+    initCategoryManagement(null);
   }
 
   function initCategoryManagement(onChange) {
@@ -1871,30 +2088,13 @@
         caseBodyImgBtn.textContent = "上传中…";
         hideAlert(alertEl);
         try {
-          var fd = new FormData();
-          fd.append("file", file);
-          var res = await fetch("/api/admin/uploads/image", {
-            method: "POST",
-            credentials: "same-origin",
-            body: fd,
-          });
-          var data = await res.json().catch(function () { return null; });
-          if (res.status === 401) { location.href = "/admin/"; return; }
-          if (!res.ok || !data || !data.ok) {
-            throw new Error((data && data.message) || "图片上传失败，请稍后重试。");
-          }
+          var url = await uploadImageFile(file);
           if (caseFormat === "html") {
-            var rt = $("#case-rt");
-            if (rt) { rt.focus(); document.execCommand("insertImage", false, data.url); }
+            insertImageIntoEditor($("#case-rt"), url);
           } else {
-            var ta = form.elements.body;
-            var insert = "\n\n![图片说明](" + data.url + ")\n\n";
-            var start = typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length;
-            var end = typeof ta.selectionEnd === "number" ? ta.selectionEnd : ta.value.length;
-            ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
-            ta.focus();
+            insertImageIntoTextarea(form.elements.body, url);
           }
-          if (hint) hint.textContent = "已插入：" + data.url;
+          if (hint) hint.textContent = "已插入：" + url;
           toast("图片已上传并插入正文");
         } catch (err) {
           showAlert(alertEl, err.message);
@@ -2058,6 +2258,7 @@
   if (page === "overview") initOverview();
   else if (page === "members") initMembers();
   else if (page === "content") initContent();
+  else if (page === "categories") initCategoriesPage();
   else if (page === "resources") initResources();
   else if (page === "tools") initTools();
   else if (page === "cases") initCases();

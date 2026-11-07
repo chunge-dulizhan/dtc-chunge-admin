@@ -8,7 +8,8 @@ PRAGMA foreign_keys = ON;
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS members (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  member_code  TEXT    NOT NULL UNIQUE,              -- 会员编号，如 CH001
+  member_code  TEXT    NOT NULL UNIQUE,              -- 会员编号，如 CG0001（删除时改为 DEL-… 释放编码）
+  archived_member_code TEXT,                          -- 删除时归档的原会员编号，仅留档不占用唯一编码
   name         TEXT    NOT NULL,
   contact      TEXT,                                  -- 联系方式（选填）
   wechat_note  TEXT,                                  -- 微信备注（选填）

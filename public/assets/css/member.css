@@ -814,6 +814,28 @@ body.member-page {
   gap: 16px;
 }
 
+/* 章节切换：滚动定位到正文面板时避开固定页头 */
+.chapter-panel {
+  scroll-margin-top: calc(var(--header-h, 64px) + 20px);
+}
+.m-cover {
+  margin: 18px 0 0;
+}
+.m-cover img {
+  width: 100%;
+  max-height: 420px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+.chapter-panel .chapter-title {
+  scroll-margin-top: calc(var(--header-h, 64px) + 20px);
+}
+.m-article-foot button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .m-aside-card {
   border: 1px solid var(--line);
   border-radius: 14px;

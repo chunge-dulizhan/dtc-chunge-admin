@@ -456,10 +456,19 @@ function toMemberDto(row) {
 }
 
 async function nextMemberCode(db) {
-  // 兼容历史 CH 前缀与新 CG 前缀：去掉前缀后的数字取最大值 +1，统一用 CG + 4 位
-  const row = await db.prepare("SELECT MAX(CAST(SUBSTR(member_code, 3) AS INTEGER)) AS max_no FROM members").first();
-  const next = (row && row.max_no ? row.max_no : 0) + 1;
-  return `CG${String(next).padStart(4, "0")}`;
+  // 仅统计「未删除 + 正常 CG 格式」的会员，历史 CH 编码不参与序号计算
+  const rows = await db
+    .prepare("SELECT member_code FROM members WHERE deleted_at IS NULL AND member_code LIKE 'CG%'")
+    .all();
+  const used = new Set();
+  for (const r of rows.results || []) {
+    const m = /^CG(\d{1,6})$/.exec(r.member_code || "");
+    if (m) used.add(parseInt(m[1], 10));
+  }
+  // 取最小可用序号：有效会员为 0001/0002/0004 时，下一个优先用 0003
+  let n = 1;
+  while (used.has(n)) n++;
+  return `CG${String(n).padStart(4, "0")}`;
 }
 
 async function createMemberWithCode(db, input, pepper) {
@@ -1522,6 +1531,7 @@ function adminShell({ title, active, admin, page, body }) {
     ["overview", "/admin/", "概览"],
     ["members", "/admin/members/", "会员管理"],
     ["content", "/admin/content/", "课程管理"],
+    ["categories", "/admin/categories/", "课程分类"],
     ["resources", "/admin/resources/", "资料管理"],
     ["tools", "/admin/tools/", "工具管理"],
     ["cases", "/admin/cases/", "案例管理"],
@@ -1694,40 +1704,15 @@ function adminContentBody() {
     <option value="archived">已下架</option>
   </select>
   <button class="btn btn-ghost btn-sm" type="button" id="content-search-btn">筛选</button>
-  <label class="a-hint" style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="content-group-toggle"> 按分类分组</label>
   <div class="a-toolbar-spacer"></div>
+  <a class="btn btn-ghost btn-sm" href="/admin/categories/">课程分类管理</a>
   <span class="a-hint">支持 Markdown / 富文本，章节类型可分多章</span>
 </div>
-
-<details class="a-cat-panel" id="category-panel">
-  <summary>课程分类管理（点击展开）</summary>
-  <div class="a-cat-toolbar">
-    <input class="a-input" id="cat-name" placeholder="分类名称" maxlength="60">
-    <input class="a-input" id="cat-slug" placeholder="标识 slug" maxlength="60">
-    <select class="a-input" id="cat-type">
-      <option value="course">课程分类</option>
-      <option value="resource">资料分类</option>
-      <option value="tool">工具分类</option>
-    </select>
-    <input class="a-input" id="cat-sort" type="number" min="0" max="9999" value="0" placeholder="排序">
-    <select class="a-input" id="cat-status">
-      <option value="active">启用</option>
-      <option value="disabled">禁用</option>
-    </select>
-    <button class="btn btn-primary btn-sm" type="button" id="cat-create">添加分类</button>
-  </div>
-  <div class="a-table-wrap">
-    <table class="a-table">
-      <thead><tr><th>名称</th><th>标识</th><th>类型</th><th>状态</th><th>排序</th><th class="a-right">操作</th></tr></thead>
-      <tbody id="category-rows"><tr><td colspan="6" class="a-empty">加载中…</td></tr></tbody>
-    </table>
-  </div>
-</details>
 
 <div class="a-table-wrap">
   <table class="a-table">
     <thead>
-      <tr><th>课程</th><th>分类</th><th>权限</th><th>状态</th><th>排序</th><th>更新时间</th><th class="a-right">操作</th></tr>
+      <tr><th>课程</th><th>导航栏目</th><th>权限</th><th>状态</th><th>排序</th><th>更新时间</th><th class="a-right">操作</th></tr>
     </thead>
     <tbody id="content-rows">
       <tr><td colspan="7" class="a-empty">加载中…</td></tr>
@@ -1751,7 +1736,19 @@ function adminContentBody() {
       <label class="a-field"><span>状态</span><select name="status"><option value="draft">草稿</option><option value="published">发布</option><option value="archived">下架</option></select></label>
       <label class="a-field"><span>排序（越小越靠前）</span><input name="sort_order" type="number" min="0" max="9999" value="0"></label>
     </div>
-    <label class="a-field"><span>封面图 URL</span><input name="cover_image" maxlength="300" placeholder="/media/xxx.jpg 或 https://…，可选"></label>
+    <div class="a-field">
+      <span>封面图</span>
+      <div class="a-cover-row">
+        <input name="cover_image" id="content-cover-url" maxlength="300" placeholder="/media/xxx.jpg 或 https://…，可选">
+        <input type="file" id="content-cover-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        <button class="btn btn-ghost btn-sm" type="button" id="content-cover-upload">上传封面</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="content-cover-remove" hidden>清除封面</button>
+      </div>
+      <div class="a-cover-preview" id="content-cover-preview" hidden>
+        <img alt="封面预览">
+        <span class="a-hint" id="content-cover-hint"></span>
+      </div>
+    </div>
     <label class="a-field"><span>摘要（列表与搜索结果用）</span><textarea name="excerpt" rows="2" maxlength="300" placeholder="一句话说明这篇内容解决什么问题"></textarea></label>
     <div class="a-field">
       <span>正文格式</span>
@@ -1788,6 +1785,7 @@ function adminContentBody() {
         <div id="content-rt" class="a-rt-editor" contenteditable="true"></div>
       </label>
     </div>
+    <div class="a-image-preview" id="content-body-preview" hidden></div>
     <div id="content-chapters" hidden>
       <div class="a-field">
         <span>章节目录</span>
@@ -1816,6 +1814,39 @@ function adminContentBody() {
     </div>
   </form>
 </dialog>`;
+}
+
+function adminCategoriesBody() {
+  return `<div class="a-page-head">
+  <div>
+    <span class="a-eyebrow">Categories</span>
+    <h1>课程分类管理</h1>
+    <p>维护课程分类的名称、标识、排序与状态。删除有关联课程的分类前需先迁移课程。</p>
+  </div>
+  <a class="btn btn-ghost btn-sm" href="/admin/content/">返回课程管理</a>
+</div>
+
+<div class="a-table-wrap">
+  <div class="a-cat-toolbar">
+    <input class="a-input" id="cat-name" placeholder="分类名称" maxlength="60">
+    <input class="a-input" id="cat-slug" placeholder="标识 slug" maxlength="60">
+    <select class="a-input" id="cat-type">
+      <option value="course">课程分类</option>
+      <option value="resource">资料分类</option>
+      <option value="tool">工具分类</option>
+    </select>
+    <input class="a-input" id="cat-sort" type="number" min="0" max="9999" value="0" placeholder="排序">
+    <select class="a-input" id="cat-status">
+      <option value="active">启用</option>
+      <option value="disabled">禁用</option>
+    </select>
+    <button class="btn btn-primary btn-sm" type="button" id="cat-create">添加分类</button>
+  </div>
+  <table class="a-table">
+    <thead><tr><th>名称</th><th>标识</th><th>类型</th><th>状态</th><th>排序</th><th class="a-right">操作</th></tr></thead>
+    <tbody id="category-rows"><tr><td colspan="6" class="a-empty">加载中…</td></tr></tbody>
+  </table>
+</div>`;
 }
 
 function adminToolsBody() {
@@ -2306,6 +2337,7 @@ async function handleAdminPage(request, env, url, admin) {
     "/admin/": { title: "后台概览", active: "overview", page: "overview", body: adminOverviewBody() },
     "/admin/members/": { title: "会员管理", active: "members", page: "members", body: adminMembersBody() },
     "/admin/content/": { title: "课程管理", active: "content", page: "content", body: adminContentBody() },
+    "/admin/categories/": { title: "课程分类", active: "categories", page: "categories", body: adminCategoriesBody() },
     "/admin/resources/": { title: "资料管理", active: "resources", page: "resources", body: adminResourcesBody() },
     "/admin/tools/": { title: "工具管理", active: "tools", page: "tools", body: adminToolsBody() },
     "/admin/cases/": { title: "案例管理", active: "cases", page: "cases", body: adminCasesBody() },
@@ -2558,6 +2590,78 @@ ${emptyHtml}
   });
 }
 
+/* ---------------- 章节同页切换（会员页与公开页共用） ---------------- */
+
+/**
+ * 统一的章节切换脚本：
+ * - 只在页面内切换章节面板，不刷新页面
+ * - 目录仅负责显示与选择，滚动目标始终是章节正文面板（不是目录）
+ * - 同步目录选中态，首章禁用上一章、末章禁用下一章
+ */
+function chapterSwitchScript() {
+  return `<script>
+(function(){
+  var nav = document.getElementById('chapter-nav');
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.chapter-panel'));
+  if (!panels.length) return;
+  var prevBtn = document.getElementById('ch-prev');
+  var nextBtn = document.getElementById('ch-next');
+  var current = 0;
+
+  function headerOffset() {
+    var h = document.querySelector('.site-header') || document.querySelector('.m-topbar') || document.querySelector('.a-top');
+    return h ? (h.getBoundingClientRect().height || 0) : 0;
+  }
+
+  function sync(idx) {
+    current = idx;
+    panels.forEach(function (p, i) {
+      p.style.display = i === idx ? '' : 'none';
+      p.classList.toggle('is-current', i === idx);
+      p.setAttribute('aria-hidden', i === idx ? 'false' : 'true');
+    });
+    if (nav) {
+      Array.prototype.forEach.call(nav.querySelectorAll('a[data-ch]'), function (a) {
+        var isCur = Number(a.getAttribute('data-ch')) === idx;
+        a.classList.toggle('is-current', isCur);
+        if (isCur) a.setAttribute('aria-current', 'true');
+        else a.removeAttribute('aria-current');
+      });
+    }
+    if (prevBtn) { prevBtn.disabled = idx === 0; }
+    if (nextBtn) { nextBtn.disabled = idx === panels.length - 1; }
+  }
+
+  function scrollToPanel(idx) {
+    var p = panels[idx];
+    if (!p) return;
+    var target = p.querySelector('.chapter-title') || p;
+    var top = target.getBoundingClientRect().top + window.pageYOffset - headerOffset() - 16;
+    window.scrollTo({ top: top < 0 ? 0 : top, behavior: 'smooth' });
+  }
+
+  function select(idx, scroll) {
+    if (idx < 0) idx = 0;
+    if (idx > panels.length - 1) idx = panels.length - 1;
+    sync(idx);
+    if (scroll) scrollToPanel(idx);
+  }
+
+  if (nav) {
+    nav.addEventListener('click', function (e) {
+      var a = e.target.closest ? e.target.closest('a[data-ch]') : null;
+      if (!a) return;
+      e.preventDefault();
+      select(Number(a.getAttribute('data-ch')), true);
+    });
+  }
+  if (prevBtn) prevBtn.addEventListener('click', function () { select(current - 1, true); });
+  if (nextBtn) nextBtn.addEventListener('click', function () { select(current + 1, true); });
+  select(0, false);
+})();
+</script>`;
+}
+
 async function renderCourseDetail(env, member, slug) {
   const row = await env.DB.prepare(
     `SELECT c.*, cat.name AS category_name, cat.slug AS category_slug
@@ -2628,7 +2732,9 @@ async function renderCourseDetail(env, member, slug) {
     ? `<div class="m-aside-card"><h3>章节目录</h3><div class="m-chapters" id="chapter-nav">${realChapters
         .map(
           (c, i) =>
-            `<a class="${i === 0 ? "is-current" : ""}" href="#ch-${i}" data-ch="${i}"><i>${String(i + 1).padStart(2, "0")}</i>${escapeHtml(c.title)}</a>`
+            `<a class="${i === 0 ? "is-current" : ""}" href="#chapter-panel-${i}" data-ch="${i}"${
+              i === 0 ? ' aria-current="true"' : ""
+            }><i>${String(i + 1).padStart(2, "0")}</i>${escapeHtml(c.title)}</a>`
         )
         .join("")}</div></div>`
     : "";
@@ -2637,29 +2743,14 @@ async function renderCourseDetail(env, member, slug) {
     ? realChapters
         .map(
           (c, i) =>
-            `<section class="chapter-panel" id="ch-${i}" data-ch="${i}" style="${i === 0 ? "" : "display:none;"}"><h2>${escapeHtml(c.title)}</h2><article class="prose m-article-body">${renderBody(c.body, row.content_format).html}</article></section>`
+            `<section class="chapter-panel${i === 0 ? " is-current" : ""}" id="chapter-panel-${i}" data-ch="${i}"${
+              i === 0 ? "" : ' style="display:none;" aria-hidden="true"'
+            }><h2 class="chapter-title">${escapeHtml(c.title)}</h2><article class="prose m-article-body">${renderBody(c.body, row.content_format).html}</article></section>`
         )
         .join("")
     : `<article class="prose m-article-body">${rendered.html}</article>`;
 
-  const chapterScript = isChapter
-    ? `<script>
-(function(){
-  var nav=document.getElementById('chapter-nav'); if(!nav) return;
-  var panels=document.querySelectorAll('.chapter-panel');
-  function show(idx){
-    panels.forEach(function(p){ p.style.display = Number(p.dataset.ch)===idx?'':'none'; });
-    nav.querySelectorAll('a').forEach(function(a){ a.classList.toggle('is-current', Number(a.dataset.ch)===idx); });
-    var target=document.getElementById('ch-'+idx); if(target) target.scrollIntoView({behavior:'smooth', block:'start'});
-  }
-  nav.addEventListener('click', function(e){ var a=e.target.closest('a[data-ch]'); if(a){ e.preventDefault(); show(Number(a.dataset.ch)); } });
-  var prev=document.getElementById('ch-prev'), next=document.getElementById('ch-next');
-  function cur(){ var n=0; panels.forEach(function(p,i){ if(p.style.display!=='none') n=i; }); return n; }
-  if(prev) prev.addEventListener('click', function(){ var n=cur(); if(n>0) show(n-1); });
-  if(next) next.addEventListener('click', function(){ var n=cur(); if(n<panels.length-1) show(n+1); });
-})();
-</script>`
-    : "";
+  const chapterScript = isChapter ? chapterSwitchScript() : "";
 
   const siblingsHtml = !isChapter && siblings.length
     ? `<div class="m-aside-card"><h3>${escapeHtml(row.category_name || "本模块")}</h3><div class="m-chapters">${siblings
@@ -2673,7 +2764,7 @@ async function renderCourseDetail(env, member, slug) {
     : "";
 
   const chapterFoot = isChapter
-    ? `<div class="m-article-foot"><span><button id="ch-prev" class="btn btn-ghost btn-sm" type="button">← 上一章</button></span><span><button id="ch-next" class="btn btn-ghost btn-sm" type="button">下一章 →</button></span></div>`
+    ? `<div class="m-article-foot"><span><button id="ch-prev" class="btn btn-ghost btn-sm" type="button" disabled>← 上一章</button></span><span><button id="ch-next" class="btn btn-ghost btn-sm" type="button"${realChapters.length <= 1 ? " disabled" : ""}>下一章 →</button></span></div>`
     : `<div class="m-article-foot"><span>${prev ? `<a href="/member/app/courses/${escapeHtml(prev.slug)}">← ${escapeHtml(prev.title)}</a>` : "<span>已经是第一篇</span>"}</span><span>${next ? `<a href="/member/app/courses/${escapeHtml(next.slug)}">${escapeHtml(next.title)} →</a>` : "<span>本模块已全部读完</span>"}</span></div>`;
 
   const body = `
@@ -2695,6 +2786,7 @@ async function renderCourseDetail(env, member, slug) {
         ${row.excerpt ? `<span>${escapeHtml(row.excerpt)}</span>` : ""}
       </div>
     </div>
+    ${row.cover_image ? `<figure class="m-cover"><img src="${escapeHtml(row.cover_image)}" alt="${escapeHtml(row.title)}" loading="lazy"></figure>` : ""}
     ${attachmentHtml}
     ${chapterPanelsHtml}
     ${chapterFoot}
@@ -3090,29 +3182,16 @@ async function handlePublicLibrary(request, env, ctx, url) {
   }
   const chapterNavHtml = isChapter
     ? `<div class="m-aside-card"><h3>章节目录</h3><div class="m-chapters" id="chapter-nav">${realChapters
-        .map((c, i) => `<a class="${i === 0 ? "is-current" : ""}" href="#ch-${i}" data-ch="${i}"><i>${String(i + 1).padStart(2, "0")}</i>${escapeHtml(c.title)}</a>`)
+        .map((c, i) => `<a class="${i === 0 ? "is-current" : ""}" href="#chapter-panel-${i}" data-ch="${i}"${i === 0 ? ' aria-current="true"' : ""}><i>${String(i + 1).padStart(2, "0")}</i>${escapeHtml(c.title)}</a>`)
         .join("")}</div></div>`
     : "";
   const chapterPanelsHtml = isChapter
-    ? realChapters.map((c, i) => `<section class="chapter-panel" id="ch-${i}" data-ch="${i}" style="${i === 0 ? "" : "display:none;"}"><h2>${escapeHtml(c.title)}</h2><article class="prose m-article-body">${renderBody(c.body, row.content_format).html}</article></section>`).join("")
+    ? realChapters.map((c, i) => `<section class="chapter-panel${i === 0 ? " is-current" : ""}" id="chapter-panel-${i}" data-ch="${i}"${i === 0 ? "" : ' style="display:none;" aria-hidden="true"'}><h2 class="chapter-title">${escapeHtml(c.title)}</h2><article class="prose m-article-body">${renderBody(c.body, row.content_format).html}</article></section>`).join("")
     : `<article class="prose m-article-body">${rendered.html}</article>`;
   const chapterFoot = isChapter
-    ? `<div class="m-article-foot"><span><button id="ch-prev" class="btn btn-ghost btn-sm" type="button">← 上一章</button></span><span><button id="ch-next" class="btn btn-ghost btn-sm" type="button">下一章 →</button></span></div>`
+    ? `<div class="m-article-foot"><span><button id="ch-prev" class="btn btn-ghost btn-sm" type="button" disabled>← 上一章</button></span><span><button id="ch-next" class="btn btn-ghost btn-sm" type="button"${realChapters.length <= 1 ? " disabled" : ""}>下一章 →</button></span></div>`
     : "";
-  const chapterScript = isChapter
-    ? `<script>
-(function(){
-  var nav=document.getElementById('chapter-nav'); if(!nav) return;
-  var panels=document.querySelectorAll('.chapter-panel');
-  function show(idx){ panels.forEach(function(p){ p.style.display=Number(p.dataset.ch)===idx?'':'none'; }); nav.querySelectorAll('a').forEach(function(a){ a.classList.toggle('is-current',Number(a.dataset.ch)===idx); }); var t=document.getElementById('ch-'+idx); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); }
-  nav.addEventListener('click',function(e){ var a=e.target.closest('a[data-ch]'); if(a){ e.preventDefault(); show(Number(a.dataset.ch)); } });
-  var pv=document.getElementById('ch-prev'),nx=document.getElementById('ch-next');
-  function cur(){ var n=0; panels.forEach(function(p,i){ if(p.style.display!=='none') n=i; }); return n; }
-  if(pv) pv.addEventListener('click',function(){ var n=cur(); if(n>0) show(n-1); });
-  if(nx) nx.addEventListener('click',function(){ var n=cur(); if(n<panels.length-1) show(n+1); });
-})();
-</script>`
-    : "";
+  const chapterScript = isChapter ? chapterSwitchScript() : "";
 
   const body = `
 <div class="m-article-layout">
@@ -3131,6 +3210,7 @@ async function handlePublicLibrary(request, env, ctx, url) {
         ${row.excerpt ? `<span>${escapeHtml(row.excerpt)}</span>` : ""}
       </div>
     </div>
+    ${row.cover_image ? `<figure class="m-cover"><img src="${escapeHtml(row.cover_image)}" alt="${escapeHtml(row.title)}" loading="lazy"></figure>` : ""}
     ${attachmentHtml}
     ${chapterPanelsHtml}
     ${chapterFoot}
@@ -4323,7 +4403,15 @@ async function handleApi(request, env, ctx, url) {
     const member = await env.DB.prepare("SELECT * FROM members WHERE id = ? AND deleted_at IS NULL").bind(memberId).first();
     if (!member) return fail(404, "member_not_found", "会员不存在或已被删除。");
     const ts = nowIso();
-    await env.DB.prepare("UPDATE members SET deleted_at = ?, status = 'disabled', updated_at = ? WHERE id = ?").bind(ts, ts, memberId).run();
+    // 释放会员编码：原编号归档到 archived_member_code，member_code 改为唯一墓碑值，
+    // 使后续新会员可以复用最小可用 CG 序号，同时不丢失历史编号。
+    await env.DB.prepare(
+      `UPDATE members
+          SET archived_member_code = COALESCE(archived_member_code, member_code),
+              member_code = 'DEL-' || member_code || '-' || id,
+              deleted_at = ?, status = 'disabled', updated_at = ?
+        WHERE id = ?`
+    ).bind(ts, ts, memberId).run();
     await env.DB.prepare("UPDATE sessions SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL").bind(ts, memberId).run();
     await env.DB.prepare("UPDATE access_codes SET status = 'revoked', revoked_at = ? WHERE member_id = ? AND status = 'active'").bind(ts, memberId).run();
     audit(ctx, env.DB, { actorType: "admin", actorId: auth.admin.id, action: "member.delete", detail: member.member_code, ipHash: await ipHash(request, pepper) });
@@ -4673,10 +4761,11 @@ async function handleApi(request, env, ctx, url) {
     } else {
       where.push("c.status != 'deleted'");
     }
-    const sql = `SELECT c.id, c.title, c.slug, c.category_id, c.excerpt, c.access_level, c.content_type,
-                        c.status, c.sort_order, c.created_at, c.updated_at, c.published_at,
-                        cat.name AS category_name, LENGTH(c.body) AS body_length,
-                        cf.file_name AS attachment_name
+    const sql = `SELECT c.id, c.title, c.slug, c.category_id, c.nav_category, c.content_type,
+                        c.excerpt, c.access_level, c.status, c.sort_order,
+                        c.created_at, c.updated_at, c.published_at,
+                        cat.name AS category_name, cat.sort_order AS category_sort_order,
+                        LENGTH(c.body) AS body_length, cf.file_name AS attachment_name
                    FROM contents c LEFT JOIN content_categories cat ON cat.id = c.category_id
                    LEFT JOIN content_files cf ON cf.content_id = c.id
                    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}

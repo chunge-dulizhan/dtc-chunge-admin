@@ -1726,6 +1726,345 @@ let memberCookie = "";
   pass("服务端渲染页导航文案可配置且链接不变");
 }
 
+/* ---------------- 31. 第三轮：会员编码生成规则 ---------------- */
+{
+  const mk = (name) => call("/api/admin/members", { method: "POST", body: { name }, cookie: adminCookie });
+
+  const a = await mk("编码测试A");
+  const b = await mk("编码测试B");
+  assert.equal(a.res.status, 200, a.text);
+  assert.equal(b.res.status, 200, b.text);
+  const codeA = a.data.member.member_code;
+  const codeB = b.data.member.member_code;
+  assert.match(codeA, /^CG\d{4}$/);
+  assert.match(codeB, /^CG\d{4}$/);
+  assert.ok(codeA !== codeB, "新会员不得重复编码");
+  pass("新建会员按当前有效记录生成 CG 编码");
+
+  // 删除会员：原编码归档，member_code 改为唯一墓碑值释放编号
+  const delA = await call("/api/admin/members/" + a.data.member.id, { method: "DELETE", cookie: adminCookie });
+  assert.equal(delA.res.status, 200, delA.text);
+  const rowA = db.prepare(
+    "SELECT member_code, archived_member_code, deleted_at, status FROM members WHERE id = ?"
+  ).get(a.data.member.id);
+  assert.equal(rowA.archived_member_code, codeA, "删除时必须归档原编码");
+  assert.match(rowA.member_code, /^DEL-/, "墓碑编码不得占用原编号");
+  assert.notEqual(rowA.member_code, codeA);
+  assert.equal(rowA.status, "disabled");
+  assert.ok(rowA.deleted_at, "会员必须为软删除");
+  pass("删除会员时归档原编码并释放 CG 编号");
+
+  const auditDel = db.prepare("SELECT detail FROM audit_logs WHERE action = 'member.delete' AND detail = ?").get(codeA);
+  assert.ok(auditDel, "审计日志必须保留删除会员的原编码");
+  pass("删除会员的审计日志保留原编号");
+
+  const c = await mk("编码测试C");
+  assert.equal(c.res.status, 200, c.text);
+  assert.equal(c.data.member.member_code, codeA, "删除后新建应优先复用被释放的编号");
+  pass("删除会员后新建会员复用被释放的 CG 编码");
+
+  // 删除 CG0001 后应重新生成 CG0001
+  const row1 = db.prepare("SELECT id FROM members WHERE member_code = 'CG0001' AND deleted_at IS NULL").get();
+  assert.ok(row1, "测试前置：应存在 CG0001 有效会员");
+  await call("/api/admin/members/" + row1.id, { method: "DELETE", cookie: adminCookie });
+  const d = await mk("编码测试D");
+  assert.equal(d.res.status, 200, d.text);
+  assert.equal(d.data.member.member_code, "CG0001", "存在缺口时应补最小缺口");
+  pass("删除 CG0001 后新建会员重新使用 CG0001");
+
+  // 历史 CH 编码不参与 CG 序号计算
+  db.prepare(
+    "INSERT INTO members (member_code, name, status, member_type, created_at, updated_at) VALUES ('CH0008', '历史 CH 会员', 'active', 'lifetime', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"
+  ).run();
+  const usedNums = new Set(
+    db
+      .prepare("SELECT member_code FROM members WHERE deleted_at IS NULL AND member_code LIKE 'CG%'")
+      .all()
+      .map((r) => parseInt(r.member_code.slice(2), 10))
+  );
+  let expectN = 1;
+  while (usedNums.has(expectN)) expectN++;
+  const expectCode = "CG" + String(expectN).padStart(4, "0");
+  const e = await mk("编码测试E");
+  assert.equal(e.res.status, 200, e.text);
+  assert.equal(e.data.member.member_code, expectCode);
+  pass("历史 CH 编码不参与 CG 序号计算");
+
+  // 并发创建：不得产生重复编码
+  const many = await Promise.all(Array.from({ length: 6 }, (_, i) => mk("并发会员" + i)));
+  const codes = many.map((r) => (r.data && r.data.member ? r.data.member.member_code : "ERR:" + r.res.status));
+  assert.equal(new Set(codes).size, 6, "并发创建出现重复编码：" + codes.join(","));
+  assert.ok(codes.every((x) => /^CG\d{4}$/.test(x)), "并发编码格式异常：" + codes.join(","));
+  pass("并发创建会员不产生重复编码");
+}
+
+/* ---------------- 32. 第三轮：课程封面与章节插图 ---------------- */
+{
+  const login = await call("/api/member/login", { method: "POST", body: { code: created[1].access_code } });
+  assert.equal(login.res.status, 200, login.text);
+  const cookie = setCookieToken(login.res);
+
+  // 后台课程表单必须提供封面上传/更换/清除控件
+  const adminContentPage = await call("/admin/content/", { cookie: adminCookie });
+  assert.equal(adminContentPage.res.status, 200);
+  for (const id of ["content-cover-file", "content-cover-upload", "content-cover-remove", "content-cover-preview", "content-body-preview"]) {
+    assert.match(adminContentPage.text, new RegExp('id="' + id + '"'), "课程表单缺少 " + id);
+  }
+  pass("课程表单提供封面上传、更换、清除与正文图片预览控件");
+
+  // 封面：创建 -> 回填 -> 更换 -> 清除
+  const coverCourse = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "封面往返测试",
+      slug: "cover-roundtrip",
+      access_level: "free",
+      status: "published",
+      cover_image: "/media/cover-a.png",
+      body: "## 封面课程\n\n正文",
+    },
+  });
+  assert.equal(coverCourse.res.status, 200, coverCourse.text);
+  const coverId = coverCourse.data.item.id;
+
+  const adminDetail = await call("/api/admin/contents/" + coverId, { cookie: adminCookie });
+  assert.equal(adminDetail.data.item.cover_image, "/media/cover-a.png", "再次打开编辑必须返回已保存封面");
+
+  let publicPage = await call("/library/cover-roundtrip/");
+  assert.equal(publicPage.res.status, 200);
+  assert.match(publicPage.text, /class="m-cover"/, "公开详情页必须显示封面");
+  assert.match(publicPage.text, /\/media\/cover-a\.png/);
+
+  await call("/api/admin/contents/" + coverId, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "封面往返测试", cover_image: "/media/cover-b.png" },
+  });
+  publicPage = await call("/library/cover-roundtrip/");
+  assert.match(publicPage.text, /\/media\/cover-b\.png/, "更换封面后前台必须同步");
+  assert.doesNotMatch(publicPage.text, /\/media\/cover-a\.png/);
+
+  await call("/api/admin/contents/" + coverId, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "封面往返测试", cover_image: "" },
+  });
+  publicPage = await call("/library/cover-roundtrip/");
+  assert.doesNotMatch(publicPage.text, /class="m-cover"/, "清除封面后前台不再显示封面");
+  pass("课程封面可保存、回填、更换与清除");
+
+  // 章节：三章分别插入图片，保存后逐章独立
+  const chapterCourse = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "三章插图课程",
+      slug: "chapter-images",
+      content_type: "chapter",
+      access_level: "member",
+      status: "published",
+      body: "",
+      chapters: [
+        { title: "第一章 认识", body: "开头段落\n\n![第一章图](/media/ch1.png)\n\n结尾段落", sort_order: 0 },
+        { title: "第二章 选品", body: "开头段落\n\n![第二章图](/media/ch2.png)\n\n结尾段落", sort_order: 1 },
+        { title: "第三章 投放", body: "开头段落\n\n![第三章图](/media/ch3.png)\n\n结尾段落", sort_order: 2 },
+      ],
+    },
+  });
+  assert.equal(chapterCourse.res.status, 200, chapterCourse.text);
+  const chapterId = chapterCourse.data.item.id;
+
+  const adminChapters = await call("/api/admin/contents/" + chapterId, { cookie: adminCookie });
+  assert.equal(adminChapters.data.item.chapters.length, 3);
+  assert.match(adminChapters.data.item.chapters[0].body, /ch1\.png/, "图片必须随章节正文保存");
+  assert.match(adminChapters.data.item.chapters[2].body, /ch3\.png/, "图片必须随章节正文保存");
+  pass("章节正文插入的图片可保存，再次编辑仍然存在");
+
+  const detail = await call("/member/app/courses/chapter-images", { cookie });
+  assert.equal(detail.res.status, 200, detail.text.slice(0, 200));
+  const text = detail.text;
+
+  assert.match(text, /id="chapter-nav"/, "章节目录必须有独立容器");
+  assert.equal((text.match(/id="chapter-panel-\d"/g) || []).length, 3, "每章必须有独立正文面板");
+  for (let i = 0; i < 3; i++) {
+    assert.match(text, new RegExp('href="#chapter-panel-' + i + '"'), "目录必须指向第 " + (i + 1) + " 章面板");
+  }
+  pass("章节目录与正文面板使用独立 ID，一一对应");
+
+  // 每章图片互不覆盖
+  const p0 = text.slice(text.indexOf('id="chapter-panel-0"'), text.indexOf('id="chapter-panel-1"'));
+  const p1 = text.slice(text.indexOf('id="chapter-panel-1"'), text.indexOf('id="chapter-panel-2"'));
+  const p2 = text.slice(text.indexOf('id="chapter-panel-2"'));
+  assert.match(p0, /\/media\/ch1\.png/);
+  assert.doesNotMatch(p0, /ch2\.png|ch3\.png/);
+  assert.match(p1, /\/media\/ch2\.png/);
+  assert.doesNotMatch(p1, /ch1\.png|ch3\.png/);
+  assert.match(p2, /\/media\/ch3\.png/);
+  assert.doesNotMatch(p2, /ch1\.png|ch2\.png/);
+  assert.match(p0, /第一章 认识/);
+  assert.match(p1, /第二章 选品/);
+  assert.match(p2, /第三章 投放/);
+  pass("三章图片与标题各自独立，互不覆盖");
+
+  // 统一章节切换脚本：滚动目标为正文面板，而非目录
+  assert.match(text, /<button id="ch-prev"[^>]*disabled>/, "第一章必须禁用上一章");
+  const nextBtn = text.match(/<button id="ch-next"[^>]*>/);
+  assert.ok(nextBtn && !/disabled/.test(nextBtn[0]), "三章课程最后一章外的下一章应可用");
+  assert.match(text, /scrollToPanel/, "必须使用统一的章节切换函数");
+  assert.doesNotMatch(text, /scrollIntoView/, "不得再用 scrollIntoView 跳到目录锚点");
+  assert.match(text, /aria-current="true"/, "目录当前选中项必须有 aria-current 标记");
+  assert.match(text, /classList\.toggle\('is-current'/, "切换时必须同步目录与正文激活状态");
+  pass("章节切换脚本指向正文面板且首章禁用上一章");
+
+  // 单章节课程：下一章禁用
+  const single = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "单章课程",
+      slug: "single-chapter",
+      content_type: "chapter",
+      access_level: "member",
+      status: "published",
+      chapters: [{ title: "唯一章节", body: "正文", sort_order: 0 }],
+    },
+  });
+  assert.equal(single.res.status, 200, single.text);
+  const singlePage = await call("/member/app/courses/single-chapter", { cookie });
+  assert.match(singlePage.text, /<button id="ch-next"[^>]*disabled>/, "最后一章必须禁用下一章");
+  pass("单章节课程禁用上一章与下一章");
+
+  // 公开详情页同样渲染章节面板（免费章节课程）
+  const freeChapter = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "免费章节课程",
+      slug: "free-chapter",
+      content_type: "chapter",
+      access_level: "free",
+      status: "published",
+      chapters: [
+        { title: "免费第一章", body: "正文", sort_order: 0 },
+        { title: "免费第二章", body: "正文", sort_order: 1 },
+      ],
+    },
+  });
+  assert.equal(freeChapter.res.status, 200, freeChapter.text);
+  const freeChapterPage = await call("/library/free-chapter/");
+  assert.equal(freeChapterPage.res.status, 200);
+  assert.equal((freeChapterPage.text.match(/id="chapter-panel-\d"/g) || []).length, 2);
+  assert.match(freeChapterPage.text, /id="chapter-nav"/);
+  pass("公开免费章节课程详情页正常显示章节面板");
+}
+
+/* ---------------- 33. 第三轮：课程列表固定按分类分组与分类管理独立入口 ---------------- */
+{
+  const adminContent = await call("/admin/content/", { cookie: adminCookie });
+  assert.equal(adminContent.res.status, 200);
+  assert.match(adminContent.text, /href="\/admin\/categories\/"/, "必须保留独立的分类管理入口");
+  assert.doesNotMatch(adminContent.text, /content-group-toggle/, "不得再有“按分类分组”勾选框");
+  assert.doesNotMatch(adminContent.text, /category-panel/, "不得再有分类管理展开面板");
+  assert.doesNotMatch(adminContent.text, /按分类分组/, "不得再有分组切换文案");
+  pass("课程管理页移除分组勾选框与分类展开面板");
+
+  const categoriesPage = await call("/admin/categories/", { cookie: adminCookie });
+  assert.equal(categoriesPage.res.status, 200, categoriesPage.text.slice(0, 200));
+  assert.match(categoriesPage.text, /id="cat-create"/);
+  assert.match(categoriesPage.text, /id="category-rows"/);
+  assert.match(categoriesPage.text, /href="\/admin\/content\/"/);
+  pass("课程分类管理为独立页面且 CRUD 入口可用");
+
+  const anonCat = await call("/api/admin/categories");
+  assert.equal(anonCat.res.status, 401);
+  const anonCatPage = await call("/admin/categories/");
+  assert.equal(anonCatPage.res.status, 302);
+  pass("未登录无法访问分类管理页面与接口");
+
+  // 新增 -> 修改 -> 删除（无关联课程）
+  const cat = await call("/api/admin/categories", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { name: "测试分类", slug: "round3-cat", type: "course", sort_order: 88, status: "active" },
+  });
+  assert.equal(cat.res.status, 200, cat.text);
+  const catId = cat.data.item.id;
+  let catList = await call("/api/admin/categories", { cookie: adminCookie });
+  assert.ok(catList.data.items.some((c) => c.slug === "round3-cat"), "新增分类必须出现在列表");
+
+  const upd = await call("/api/admin/categories/" + catId, {
+    method: "POST",
+    cookie: adminCookie,
+    body: { name: "测试分类改名", slug: "round3-cat", type: "course", sort_order: 77, status: "active" },
+  });
+  assert.equal(upd.res.status, 200, upd.text);
+  catList = await call("/api/admin/categories", { cookie: adminCookie });
+  const updated = catList.data.items.find((c) => c.slug === "round3-cat");
+  assert.equal(updated.name, "测试分类改名");
+  assert.equal(updated.sort_order, 77, "分类排序必须可调整");
+
+  const delCat = await call("/api/admin/categories/" + catId, { method: "DELETE", cookie: adminCookie });
+  assert.equal(delCat.res.status, 200, delCat.text);
+  catList = await call("/api/admin/categories", { cookie: adminCookie });
+  assert.ok(!catList.data.items.some((c) => c.slug === "round3-cat"), "无关联课程的分类可直接删除");
+  pass("分类管理：新增、修改、调整排序、删除无关联分类均可用");
+
+  // 有关联课程：先拦截，再迁移到未分类后删除
+  const cat2 = await call("/api/admin/categories", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { name: "待迁移分类", slug: "round3-cat-migrate", type: "course", sort_order: 66, status: "active" },
+  });
+  assert.equal(cat2.res.status, 200, cat2.text);
+  const cat2Id = cat2.data.item.id;
+
+  const courseInCat = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      title: "分类迁移课程",
+      slug: "round3-migrate-course",
+      category_id: cat2Id,
+      access_level: "free",
+      status: "published",
+      body: "正文",
+    },
+  });
+  assert.equal(courseInCat.res.status, 200, courseInCat.text);
+
+  const blocked = await call("/api/admin/categories/" + cat2Id, { method: "DELETE", cookie: adminCookie });
+  assert.equal(blocked.res.status, 409);
+  assert.equal(blocked.data.error, "category_in_use");
+
+  const migrated = await call("/api/admin/categories/" + cat2Id + "/migrate", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { target_category_id: null },
+  });
+  assert.equal(migrated.res.status, 200, migrated.text);
+  const courseRow = db.prepare("SELECT category_id, status FROM contents WHERE slug = 'round3-migrate-course'").get();
+  assert.equal(courseRow.category_id, null, "迁移后课程应归入未分类");
+  assert.equal(courseRow.status, "published", "迁移不得影响课程状态");
+  catList = await call("/api/admin/categories", { cookie: adminCookie });
+  assert.ok(!catList.data.items.some((c) => c.slug === "round3-cat-migrate"), "迁移后分类应被删除");
+  pass("有关联课程的分类先拦截删除，迁移后课程保留且可删除");
+
+  // 课程列表接口返回分类信息，前端据此固定分组
+  const items = (await call("/api/admin/contents", { cookie: adminCookie })).data.items;
+  const withCat = items.find((c) => c.category_id && c.category_name);
+  assert.ok(withCat, "课程列表必须返回所属分类名称");
+  assert.ok("category_sort_order" in withCat, "课程列表必须返回分类排序字段");
+  assert.ok(items.some((c) => !c.category_id), "未分类课程应存在并单独分组");
+
+  const adminJs = readFileSync(join(root, "public", "assets", "js", "admin.js"), "utf8");
+  assert.ok(!/content-group-toggle/.test(adminJs), "admin.js 不得再读取分组开关");
+  assert.match(adminJs, /a-group-row/, "课程列表必须渲染分类分组行");
+  assert.match(adminJs, /门课程/, "每个分类必须显示该分类课程数量");
+  assert.match(adminJs, /category_sort_order/, "分组排序必须遵循后台 sort_order");
+  pass("课程列表固定按分类分组并显示分类名称与课程数量");
+}
+
 await Promise.all(pending);
 
 console.log(`\n共 ${results.length} 项服务端测试全部通过。`);
