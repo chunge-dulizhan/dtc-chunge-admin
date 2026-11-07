@@ -811,22 +811,35 @@ async function applySiteSettings(response, request, env) {
   const type = response.headers.get("Content-Type") || "";
   if (!type.includes("text/html") || request.method === "HEAD") return response;
 
-  let site;
+  let site, copy;
   try {
     site = await loadSite(env);
+    copy = await loadCopy(env);
   } catch {
     return response;
   }
-  if (!siteChanged(site)) return response;
 
-  const html = await response.text();
-  const rewritten = rewriteSiteText(html, site);
+  let html = null;
+  const needRewrite = siteChanged(site) || copyChanged(copy);
+  if (!needRewrite) return response;
+  html = await response.text();
+
+  let changed = false;
+  if (siteChanged(site)) {
+    html = rewriteSiteText(html, site);
+    changed = true;
+  }
+  if (copyChanged(copy)) {
+    html = applyCopy(html, copy);
+    changed = true;
+  }
+  if (!changed) return response;
 
   const headers = new Headers(response.headers);
   headers.delete("Content-Length");
   headers.delete("ETag");
   headers.delete("Last-Modified");
-  return new Response(rewritten, { status: response.status, headers });
+  return new Response(html, { status: response.status, headers });
 }
 
 function normalizeSiteInput(body) {
@@ -845,6 +858,152 @@ function normalizeSiteInput(body) {
   }
   if (!values.brand_name) return { error: "invalid_settings", message: "品牌名称不能为空。" };
   if (!values.wechat) return { error: "invalid_settings", message: "咨询微信不能为空。" };
+  return values;
+}
+
+/* ------------------------------------------------------------------ */
+/* 页面文案与导航自定义配置（复用 settings 表，key 前缀 public./member./admin.） */
+/* ------------------------------------------------------------------ */
+
+const COPY_DEFAULT = {
+  // 公开网站导航
+  "public.nav.home": "首页",
+  "public.nav.courses": "免费课程",
+  "public.nav.guide": "独立站入门",
+  "public.nav.products": "选品知识库",
+  "public.nav.build": "建站教程",
+  "public.nav.marketing": "营销知识",
+  "public.nav.cases": "学员案例",
+  "public.nav.member": "会员中心",
+  // 首页板块
+  "public.home.hero.tag": "独立站出海实战教学 · 创业陪跑",
+  "public.home.hero.title": "从选品到第一单，把独立站做成能持续赚钱的生意。",
+  "public.home.hero.description":
+    "不讲空理论，也不贩卖焦虑。用 10 大体系课、可直接套用的网页工具和真实操盘复盘，陪你把一个店从 0 跑到稳定出单。",
+  "public.home.courses.title": "先免费学，把基本功练扎实",
+  "public.home.courses.description":
+    "不用注册，不用登录。选品、建站、营销的入门内容全部公开。按顺序读一遍，你能避开新手最容易踩的 80% 的坑。",
+  "public.home.guide.title": "独立站入门",
+  "public.home.products.title": "选品知识库",
+  "public.home.build.title": "建站教程",
+  "public.home.marketing.title": "营销知识",
+  "public.home.cases.title": "不讲道理，讲做过的事",
+  "public.home.cases.description": "起步条件不同、品类不同，但路径可以复用：先验证，再投入，最后放大。",
+  "public.home.member.title": "已有访问码？直接进入会员专属空间",
+  "public.home.member.description":
+    "会员中心包含全部付费课程、网页工具与实操资料。访问码由管理员一对一发放，不绑邮箱、不用注册。",
+  // 免费课程页
+  "public.courses.title": "免费课程",
+  "public.courses.subtitle": "",
+  "public.courses.intro": "不用注册、不用登录，付费课程与工具另有会员入口。这里只列出已发布的免费公开课程。",
+  "public.courses.list.title": "全部免费课程",
+  "public.courses.list.description": "",
+  "public.courses.category.title": "按分类浏览",
+  "public.courses.uncategorized": "未分类",
+  // 会员中心导航
+  "member.nav.home": "会员首页",
+  "member.nav.courses": "图文实战课程",
+  "member.nav.tools": "网页工具库",
+  "member.nav.sop": "AI 实操 SOP",
+  "member.nav.resources": "运营资料库",
+  "member.nav.updates": "更新内容",
+  "member.nav.back": "返回公开站",
+  // 会员首页
+  "member.home.welcome.title": "欢迎回来",
+  "member.home.welcome.description":
+    "这里是你的独立站实战工作台：课程、工具、SOP 与资料都在同一处。建议按模块顺序学习，遇到问题随时微信联系。",
+  "member.home.courses.title": "图文实战课程",
+  "member.home.courses.description": "从入门到增长，按模块顺序学完一套完整打法。",
+  "member.home.tools.title": "网页工具库",
+  "member.home.tools.description": "定价、广告、利润计算器，边算边做决策。",
+  "member.home.sop.title": "AI 实操 SOP",
+  "member.home.sop.description": "把 AI 用在选品、文案和客服，按步骤执行。",
+  "member.home.resources.title": "运营资料库",
+  "member.home.resources.description": "清单、表格、模板，下载后直接改成自己的。",
+  "member.home.updates.title": "更新内容",
+  "member.home.updates.description": "最新课程、工具与资料更新。",
+  // 管理员后台导航
+  "admin.nav.overview": "概览",
+  "admin.nav.members": "会员管理",
+  "admin.nav.content": "课程管理",
+  "admin.nav.resources": "资料管理",
+  "admin.nav.tools": "工具管理",
+  "admin.nav.cases": "案例管理",
+  "admin.nav.settings": "网站设置",
+  "admin.nav.audit": "操作日志",
+};
+
+const COPY_KEYS = Object.keys(COPY_DEFAULT);
+const COPY_MAX_LEN = 200;
+
+let copyCache = { at: 0, value: null };
+
+async function loadCopy(env) {
+  const now = Date.now();
+  if (copyCache.value && now - copyCache.at < 60000) return copyCache.value;
+  const copy = { ...COPY_DEFAULT };
+  try {
+    const rows = (await env.DB.prepare("SELECT key, value FROM settings").all()).results || [];
+    for (const row of rows) {
+      if (row.key in COPY_DEFAULT) {
+        const v = typeof row.value === "string" ? row.value.trim() : "";
+        if (v) copy[row.key] = v;
+      }
+    }
+  } catch {
+    // settings 表不存在时使用默认值
+  }
+  copyCache = { at: now, value: copy };
+  return copy;
+}
+
+function resetCopyCache() {
+  copyCache = { at: 0, value: null };
+}
+
+/** 公网可暴露的配置（仅 public.*，绝不返回会员/后台专属文案） */
+function publicCopy(copy) {
+  const out = {};
+  for (const k of COPY_KEYS) {
+    if (k.startsWith("public.")) out[k] = copy[k];
+  }
+  return out;
+}
+
+/**
+ * 服务端替换带 data-copy="key" 的元素文本。
+ * 仅当配置值非空且与默认值不同时，用转义后的纯文本替换元素内容；
+ * 未自定义时保留原始 HTML（含 <em>、<br> 等富文本结构）。
+ */
+function applyCopy(html, copy) {
+  if (!html || typeof html !== "string") return html;
+  return html.replace(
+    /<([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)\sdata-copy="([^"]+)"([^>]*)>([\s\S]*?)<\/\1>/g,
+    (match, tag, pre, key, post) => {
+      const val = copy[key];
+      if (!val || val === COPY_DEFAULT[key]) return match;
+      return `<${tag}${pre} data-copy="${key}"${post}>${escapeHtml(val)}</${tag}>`;
+    }
+  );
+}
+
+function copyChanged(copy) {
+  return COPY_KEYS.some((k) => copy[k] !== COPY_DEFAULT[k]);
+}
+
+/** 校验并清洗管理员提交的文案：只允许已知 key，去掉 HTML，空值回退默认（不入库） */
+function normalizeCopyInput(body) {
+  const values = {};
+  for (const key of COPY_KEYS) {
+    if (!(key in body)) continue;
+    const raw = typeof body[key] === "string" ? body[key] : "";
+    const value = raw.replace(/[<>]/g, "").trim();
+    if (!value) continue; // 空值不入库，回退默认
+    if (value.length > COPY_MAX_LEN) {
+      return { error: "invalid_copy", message: `「${key}」内容过长，请控制在 ${COPY_MAX_LEN} 个字符以内。` };
+    }
+    values[key] = value;
+  }
   return values;
 }
 
@@ -873,7 +1032,7 @@ function memberNav(active) {
       ([key, href, label, num]) =>
         `<a class="${active === key ? "is-active" : ""}" href="${href}"${
           active === key ? ' aria-current="page"' : ""
-        }><span>${label}</span><small>${num}</small></a>`
+        }><span data-copy="member.nav.${key}">${label}</span><small>${num}</small></a>`
     )
     .join("");
 }
@@ -918,7 +1077,7 @@ function memberShell({ title, active, member, body }) {
         <span class="m-status"><i aria-hidden="true"></i>${statusText} · 永久会员</span>
         <div class="m-side-actions">
           <button class="m-linkbtn" type="button" data-logout>退出登录</button>
-          <a class="m-linkbtn" href="/">返回公开站</a>
+          <a class="m-linkbtn" href="/" data-copy="member.nav.back">返回公开站</a>
         </div>
         <p class="m-side-contact">带教咨询微信 ch022427</p>
       </div>
@@ -1116,7 +1275,7 @@ function adminShell({ title, active, admin, page, body }) {
       ([key, href, label]) =>
         `<a class="${active === key ? "is-active" : ""}" href="${href}"${
           active === key ? ' aria-current="page"' : ""
-        }>${label}</a>`
+        }><span data-copy="admin.nav.${key}">${label}</span></a>`
     )
     .join("");
 
@@ -1528,7 +1687,7 @@ function adminAuditBody() {
 </div>`;
 }
 
-function adminSettingsBody(site) {
+function adminSettingsBody(site, copy) {
   const field = (name, label, hint, maxlength, tag) => {
     const value = escapeHtml(site[name] || SITE_DEFAULT[name]);
     const control =
@@ -1561,7 +1720,114 @@ function adminSettingsBody(site) {
     <span class="a-hint">留空会恢复为默认文案；请勿填写 HTML 标签。</span>
     <button class="btn btn-primary btn-sm" type="submit" id="settings-submit">保存设置</button>
   </div>
+</form>
+
+<hr class="a-divider">
+<div class="a-page-head">
+  <div>
+    <span class="a-eyebrow">Page Copy &amp; Navigation</span>
+    <h2>页面文案与导航配置</h2>
+    <p>修改各页面的标题、描述与导航显示名称。只改展示文案，不改变 URL、权限与业务逻辑。留空回退默认值。</p>
+  </div>
+</div>
+<form class="a-form a-copy-form" id="copy-form" data-defaults='${escapeHtml(JSON.stringify(COPY_DEFAULT))}'>
+  ${copyFormGroups(copy)}
+  <p class="a-form-alert" id="copy-alert" hidden></p>
+  <div class="a-dialog-foot">
+    <span class="a-hint">留空即使用默认文案；请勿填写 HTML 标签，会被自动清除。</span>
+    <button class="btn btn-ghost btn-sm" type="button" id="copy-reset">恢复默认文案</button>
+    <button class="btn btn-primary btn-sm" type="submit" id="copy-submit">保存文案</button>
+  </div>
 </form>`;
+}
+
+const COPY_LABELS = {
+  "public.nav.home": "首页",
+  "public.nav.courses": "免费课程",
+  "public.nav.guide": "独立站入门",
+  "public.nav.products": "选品知识库",
+  "public.nav.build": "建站教程",
+  "public.nav.marketing": "营销知识",
+  "public.nav.cases": "学员案例",
+  "public.nav.member": "会员入口",
+  "public.home.hero.tag": "首页 · 首屏标签",
+  "public.home.hero.title": "首页 · 首屏主标题",
+  "public.home.hero.description": "首页 · 首屏描述",
+  "public.home.courses.title": "首页 · 免费课程板块标题",
+  "public.home.courses.description": "首页 · 免费课程板块描述",
+  "public.home.guide.title": "首页 · 独立站入门板块标题",
+  "public.home.products.title": "首页 · 选品知识库板块标题",
+  "public.home.build.title": "首页 · 建站教程板块标题",
+  "public.home.marketing.title": "首页 · 营销知识板块标题",
+  "public.home.cases.title": "首页 · 学员案例板块标题",
+  "public.home.cases.description": "首页 · 学员案例板块描述",
+  "public.home.member.title": "首页 · 会员引导板块标题",
+  "public.home.member.description": "首页 · 会员引导板块描述",
+  "public.courses.title": "免费课程页 · 主标题",
+  "public.courses.subtitle": "免费课程页 · 副标题",
+  "public.courses.intro": "免费课程页 · 介绍描述",
+  "public.courses.list.title": "免费课程页 · 列表标题",
+  "public.courses.list.description": "免费课程页 · 列表描述",
+  "public.courses.category.title": "免费课程页 · 分类区标题",
+  "public.courses.uncategorized": "免费课程页 · 未分类名称",
+  "member.nav.home": "会员导航 · 会员首页",
+  "member.nav.courses": "会员导航 · 图文实战课程",
+  "member.nav.tools": "会员导航 · 网页工具库",
+  "member.nav.sop": "会员导航 · AI 实操 SOP",
+  "member.nav.resources": "会员导航 · 运营资料库",
+  "member.nav.updates": "会员导航 · 更新内容",
+  "member.nav.back": "会员导航 · 返回公开站",
+  "member.home.welcome.title": "会员首页 · 欢迎标题",
+  "member.home.welcome.description": "会员首页 · 欢迎描述",
+  "member.home.courses.title": "会员首页 · 图文实战课程标题",
+  "member.home.courses.description": "会员首页 · 图文实战课程描述",
+  "member.home.tools.title": "会员首页 · 网页工具库标题",
+  "member.home.tools.description": "会员首页 · 网页工具库描述",
+  "member.home.sop.title": "会员首页 · AI 实操 SOP 标题",
+  "member.home.sop.description": "会员首页 · AI 实操 SOP 描述",
+  "member.home.resources.title": "会员首页 · 运营资料库标题",
+  "member.home.resources.description": "会员首页 · 运营资料库描述",
+  "member.home.updates.title": "会员首页 · 更新内容标题",
+  "member.home.updates.description": "会员首页 · 更新内容描述",
+  "admin.nav.overview": "后台导航 · 概览",
+  "admin.nav.members": "后台导航 · 会员管理",
+  "admin.nav.content": "后台导航 · 课程管理",
+  "admin.nav.resources": "后台导航 · 资料管理",
+  "admin.nav.tools": "后台导航 · 工具管理",
+  "admin.nav.cases": "后台导航 · 案例管理",
+  "admin.nav.settings": "后台导航 · 网站设置",
+  "admin.nav.audit": "后台导航 · 操作日志",
+};
+
+const COPY_GROUPS = [
+  { title: "公开网站导航", prefix: "public.nav." },
+  { title: "首页各板块", prefix: "public.home." },
+  { title: "免费课程页面", prefix: "public.courses." },
+  { title: "会员中心导航", prefix: "member.nav." },
+  { title: "会员中心首页", prefix: "member.home." },
+  { title: "管理员后台导航", prefix: "admin.nav." },
+];
+
+function copyFormGroups(copy) {
+  return COPY_GROUPS.map((g) => {
+    const keys = COPY_KEYS.filter((k) => k.startsWith(g.prefix));
+    const rows = keys
+      .map((k) => {
+        const value = escapeHtml(copy[k] || "");
+        const def = escapeHtml(COPY_DEFAULT[k] || "");
+        const isTextarea = k.includes(".description") || k.includes(".intro");
+        const control = isTextarea
+          ? `<textarea name="${k}" rows="2" maxlength="200" placeholder="${def}">${value}</textarea>`
+          : `<input name="${k}" maxlength="200" value="${value}" placeholder="${def}">`;
+        return `<label class="a-field a-copy-field" data-key="${k}">
+          <span>${escapeHtml(COPY_LABELS[k] || k)}<small class="a-hint" style="margin-left:6px;">key: ${k}</small></span>
+          ${control}
+          <small class="a-hint">默认：${def}</small>
+        </label>`;
+      })
+      .join("");
+    return `<fieldset class="a-copy-group"><legend>${g.title}</legend><div class="a-form-grid">${rows}</div></fieldset>`;
+  }).join("");
 }
 
 async function handleAdminPage(request, env, url, admin) {
@@ -1580,7 +1846,7 @@ async function handleAdminPage(request, env, url, admin) {
     "/admin/settings/": { title: "网站设置", active: "settings", page: "settings", body: "" },
     "/admin/audit/": { title: "操作日志", active: "audit", page: "audit", body: adminAuditBody() },
   };
-  if (path === "/admin/settings/") pages[path].body = adminSettingsBody(await loadSite(env));
+  if (path === "/admin/settings/") pages[path].body = adminSettingsBody(await loadSite(env), await loadCopy(env));
   const page = pages[path];
   if (!page) {
     return new Response(
@@ -1678,8 +1944,8 @@ async function renderMemberHome(env, member) {
     body: `
 <div class="m-hero">
   <span class="m-eyebrow">Member Center / 会员首页</span>
-  <h1>欢迎回来，${escapeHtml(member.name)}</h1>
-  <p class="m-hero-lead">这里是你的独立站实战工作台：课程、工具、SOP 与资料都在同一处。建议按模块顺序学习，遇到问题随时微信联系。</p>
+  <h1><span data-copy="member.home.welcome.title">欢迎回来</span>，${escapeHtml(member.name)}</h1>
+  <p class="m-hero-lead" data-copy="member.home.welcome.description">这里是你的独立站实战工作台：课程、工具、SOP 与资料都在同一处。建议按模块顺序学习，遇到问题随时微信联系。</p>
   <div class="m-hero-meta">
     <span>会员编号 <b>${escapeHtml(member.member_code)}</b></span>
     <span class="m-tag-ok">正常 · 永久会员</span>
@@ -1701,26 +1967,26 @@ async function renderMemberHome(env, member) {
   <div class="m-cards">
     <a class="m-card" href="/member/app/courses/">
       <span class="m-card-kicker">COURSE</span>
-      <h3>图文实战课程</h3>
-      <p>从入门到增长，按模块顺序学完一套完整打法。</p>
+      <h3 data-copy="member.home.courses.title">图文实战课程</h3>
+      <p data-copy="member.home.courses.description">从入门到增长，按模块顺序学完一套完整打法。</p>
       <span class="m-card-foot"><b>${items.length}</b><span>篇已发布 · ${publishedCats.length} 个模块</span></span>
     </a>
     <a class="m-card" href="/member/app/tools/">
       <span class="m-card-kicker">TOOL</span>
-      <h3>网页工具库</h3>
-      <p>定价、广告、利润计算器，边算边做决策。</p>
+      <h3 data-copy="member.home.tools.title">网页工具库</h3>
+      <p data-copy="member.home.tools.description">定价、广告、利润计算器，边算边做决策。</p>
       <span class="m-card-foot"><b>${tools.length}</b><span>个工具入口</span></span>
     </a>
     <a class="m-card" href="/member/app/sop/">
       <span class="m-card-kicker">SOP</span>
-      <h3>AI 实操 SOP</h3>
-      <p>把 AI 用在选品、文案和客服，按步骤执行。</p>
+      <h3 data-copy="member.home.sop.title">AI 实操 SOP</h3>
+      <p data-copy="member.home.sop.description">把 AI 用在选品、文案和客服，按步骤执行。</p>
       <span class="m-card-foot"><b>${sopContents.length + resources.filter((r) => ["sop", "prompt"].includes(r.category_slug)).length}</b><span>份流程与提示词</span></span>
     </a>
     <a class="m-card" href="/member/app/resources/">
       <span class="m-card-kicker">RESOURCE</span>
-      <h3>运营资料库</h3>
-      <p>清单、表格、模板，下载后直接改成自己的。</p>
+      <h3 data-copy="member.home.resources.title">运营资料库</h3>
+      <p data-copy="member.home.resources.description">清单、表格、模板，下载后直接改成自己的。</p>
       <span class="m-card-foot"><b>${resources.length}</b><span>份可下载资料</span></span>
     </a>
   </div>
@@ -2317,6 +2583,9 @@ async function handlePublicCourseList(request, env) {
     return fail(405, "method_not_allowed", "不支持该请求方法。");
   }
 
+  const copy = await loadCopy(env);
+  const uncategorizedLabel = copy["public.courses.uncategorized"] || "未分类";
+
   const rows =
     (
       await env.DB.prepare(
@@ -2338,7 +2607,7 @@ async function handlePublicCourseList(request, env) {
     <a class="m-row-title" href="/library/${escapeHtml(item.slug)}/">${escapeHtml(item.title)} <span class="m-tag free">免费</span></a>
     ${item.excerpt ? `<p class="m-row-desc">${escapeHtml(item.excerpt)}</p>` : ""}
   </div>
-  <div class="m-row-meta"><span>${escapeHtml(item.category_name || "知识库")}</span><span>${date}</span></div>
+  <div class="m-row-meta"><span>${escapeHtml(item.category_name || uncategorizedLabel)}</span><span>${date}</span></div>
   <span class="m-row-arrow" aria-hidden="true">→</span>
 </div>`;
         })
@@ -2347,8 +2616,8 @@ async function handlePublicCourseList(request, env) {
 
   const body = `
 <div class="m-page-head">
-  <h1>免费课程</h1>
-  <p>不用注册、不用登录，付费课程与工具另有会员入口。这里只列出已发布的免费公开课程。</p>
+  <h1 data-copy="public.courses.title">免费课程</h1>
+  <p data-copy="public.courses.intro">不用注册、不用登录，付费课程与工具另有会员入口。这里只列出已发布的免费公开课程。</p>
 </div>
 <div style="margin-top:24px;">${listHtml}</div>
 <div class="m-note" style="margin-top:36px;">
@@ -3434,6 +3703,7 @@ async function handleApi(request, env, ctx, url) {
         .run();
     }
     resetSiteCache();
+    resetCopyCache();
 
     audit(ctx, env.DB, {
       actorType: "admin",
@@ -3443,6 +3713,67 @@ async function handleApi(request, env, ctx, url) {
     });
 
     return json({ ok: true, item: values });
+  }
+
+  /* ---------------- 页面文案与导航配置 ---------------- */
+
+  if (path === "/api/admin/copy" && method === "GET") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    return json({ ok: true, item: await loadCopy(env), defaults: COPY_DEFAULT });
+  }
+
+  if (path === "/api/admin/copy" && method === "POST") {
+    if (!originAllowed(request)) return fail(403, "forbidden_origin", "请求来源不被允许。");
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+
+    const body = await readJson(request);
+    if (!body || typeof body !== "object") return fail(400, "invalid_body", "请求格式不正确。");
+    const values = normalizeCopyInput(body);
+    if (values.error) return fail(400, values.error, values.message);
+
+    const now = nowIso();
+    // 只更新提交的 key；未提交或空值的 key 保留数据库原值或回退默认
+    for (const [key, value] of Object.entries(values)) {
+      await env.DB.prepare(
+        `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      )
+        .bind(key, value, now)
+        .run();
+    }
+    resetCopyCache();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "copy.update",
+      detail: `更新 ${Object.keys(values).length} 项文案配置`,
+    });
+
+    return json({ ok: true, item: await loadCopy(env) });
+  }
+
+  if (path === "/api/admin/copy/reset" && method === "POST") {
+    if (!originAllowed(request)) return fail(403, "forbidden_origin", "请求来源不被允许。");
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+
+    const placeholders = COPY_KEYS.map(() => "?").join(",");
+    await env.DB.prepare(`DELETE FROM settings WHERE key IN (${placeholders})`)
+      .bind(...COPY_KEYS)
+      .run();
+    resetCopyCache();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "copy.reset",
+      detail: "恢复全部文案为默认值",
+    });
+
+    return json({ ok: true, item: await loadCopy(env) });
   }
 
   /* ---------------- 分类 ---------------- */
@@ -4364,6 +4695,13 @@ async function handleApi(request, env, ctx, url) {
         LIMIT 6`
     ).all();
     return json({ ok: true, items: rows.results || [] });
+  }
+
+  /* ---------------- 公开文案配置（仅 public.*，不含会员/后台） ---------------- */
+
+  if (path === "/api/public/copy" && method === "GET") {
+    const copy = await loadCopy(env);
+    return json({ ok: true, item: publicCopy(copy) });
   }
 
   return fail(404, "not_found", "接口不存在。");

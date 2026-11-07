@@ -1496,6 +1496,63 @@
         submit.disabled = false;
       }
     });
+
+    /* ---------------- 页面文案与导航配置 ---------------- */
+    var copyForm = $("#copy-form");
+    if (copyForm) {
+      var copyAlert = $("#copy-alert");
+      var copySubmit = $("#copy-submit");
+      var copyReset = $("#copy-reset");
+      var copyDefaults = {};
+      try {
+        copyDefaults = JSON.parse(copyForm.getAttribute("data-defaults") || "{}");
+      } catch (e) {
+        copyDefaults = {};
+      }
+
+      function collectCopy() {
+        var payload = {};
+        $$("input[name], textarea[name]", copyForm).forEach(function (el) {
+          if (el.name && el.name.indexOf(".") > 0) payload[el.name] = el.value;
+        });
+        return payload;
+      }
+
+      copyForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        hideAlert(copyAlert);
+        copySubmit.disabled = true;
+        try {
+          await api("/api/admin/copy", { method: "POST", body: collectCopy() });
+          showAlert(copyAlert, "文案已保存，刷新页面即可看到最新效果。", true);
+          toast("文案配置已保存");
+        } catch (err) {
+          showAlert(copyAlert, err.message);
+        } finally {
+          copySubmit.disabled = false;
+        }
+      });
+
+      copyReset.addEventListener("click", function () {
+        if (!window.confirm("确定要将全部页面文案恢复为默认值吗？此操作不可撤销。")) return;
+        hideAlert(copyAlert);
+        copyReset.disabled = true;
+        api("/api/admin/copy/reset", { method: "POST" })
+          .then(function () {
+            $$("input[name], textarea[name]", copyForm).forEach(function (el) {
+              el.value = copyDefaults[el.name] || "";
+            });
+            showAlert(copyAlert, "已恢复为默认文案，刷新页面生效。", true);
+            toast("文案已恢复默认");
+          })
+          .catch(function (err) {
+            showAlert(copyAlert, err.message);
+          })
+          .finally(function () {
+            copyReset.disabled = false;
+          });
+      });
+    }
   }
 
   /* ---------------- 入口 ---------------- */

@@ -575,6 +575,36 @@
   line-height: 1.7;
 }
 
+.a-divider {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 28px 0;
+}
+
+.a-copy-group {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+
+.a-copy-group legend {
+  padding: 0 8px;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.a-copy-field {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 720px) {
+  .a-copy-field {
+    grid-column: span 1;
+  }
+}
+
 .a-field input:focus,
 .a-field select:focus,
 .a-field textarea:focus {

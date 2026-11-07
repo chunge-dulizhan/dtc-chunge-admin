@@ -52,7 +52,13 @@ const env = {
       if (pathname.startsWith("/media/")) {
         return new Response("Not Found", { status: 404 });
       }
-      return new Response("<html>static</html>", { headers: { "Content-Type": "text/html" } });
+      // 模拟首页等静态页：带 data-copy 标记，便于测试文案替换
+      return new Response(
+        `<html>static<nav><a href="/"><span data-copy="public.nav.home">首页</span></a><a href="/courses/"><span data-copy="public.nav.courses">免费课程</span></a><a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span></a></nav>` +
+          `<h1 data-copy="public.home.hero.title">默认首页标题</h1>` +
+          `<p data-copy="public.home.cases.description">默认案例描述</p></html>`,
+        { headers: { "Content-Type": "text/html" } }
+      );
     },
   },
   CODE_PEPPER: "test-pepper-do-not-use-in-prod",
@@ -1416,6 +1422,87 @@ let memberCookie = "";
   const guestPage = await call("/member/app/courses/sync-member-course");
   assert.equal(guestPage.res.status, 302, "访客访问会员课程必须跳登录");
   pass("会员课程后台保存后会员中心同步，访客权限未削弱");
+}
+
+/* ---------------- 28. 页面文案与导航自定义配置 ---------------- */
+{
+  // 重新登录一个会员（前面测试中的成员会话已失效）
+  const m2login = await call("/api/member/login", { method: "POST", body: { code: created[1].access_code } });
+  assert.equal(m2login.res.status, 200, m2login.text);
+  const m2Cookie = setCookieToken(m2login.res);
+
+  // 公开接口只返回 public.*，绝不泄露会员/后台专属文案
+  const pub = await call("/api/public/copy");
+  assert.equal(pub.res.status, 200);
+  const pubKeys = Object.keys(pub.data.item);
+  assert.ok(pubKeys.every((k) => k.startsWith("public.")), "公开接口只能返回 public.* 配置");
+  assert.ok(!pubKeys.some((k) => k.startsWith("member.") || k.startsWith("admin.")), "不得返回会员或后台文案");
+  assert.equal(pub.data.item["public.nav.home"], "首页", "未配置时返回默认值");
+  pass("公开文案接口只暴露 public.* 并返回默认值");
+
+  // 非管理员不能修改文案
+  const anonSave = await call("/api/admin/copy", { method: "POST", body: { "public.nav.home": "x" } });
+  assert.equal(anonSave.res.status, 401, "未登录不能修改文案");
+  const memberSave = await call("/api/admin/copy", { method: "POST", body: { "public.nav.home": "x" }, cookie: m2Cookie });
+  assert.ok([401, 403].includes(memberSave.res.status), "会员不能修改后台文案");
+  pass("非管理员不能修改文案配置");
+
+  // 管理员保存文案后，前台 HTML 实际替换 data-copy
+  const save = await call("/api/admin/copy", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      "public.nav.home": "网站首页",
+      "public.nav.courses": "免费学习",
+      "public.home.hero.title": "自定义主标题",
+      "public.home.cases.description": "自定义案例描述",
+      "public.courses.uncategorized": "其它分类",
+      "member.nav.courses": "会员课程",
+      "member.home.tools.title": "工具台",
+      "admin.nav.members": "用户管理",
+    },
+  });
+  assert.equal(save.res.status, 200, save.text);
+
+  const home = await call("/");
+  assert.match(home.text, />网站首页</, "首页导航必须显示自定义名称");
+  assert.match(home.text, /免费学习/, "首页导航免费课程必须显示自定义名称");
+  assert.match(home.text, /自定义主标题/, "首页主标题必须替换为自定义文案");
+  assert.match(home.text, /自定义案例描述/, "首页案例描述必须替换");
+  pass("管理员保存文案后前台 HTML 实际生效");
+
+  // 未配置的 key 仍使用默认，不出现空白
+  assert.match(home.text, />独立站入门</, "未自定义的导航仍显示默认文案");
+
+  // 免费课程页未分类标签生效
+  const freeList = await call("/courses/");
+  assert.match(freeList.text, /其它分类/, "免费课程页未分类名称可自定义");
+  pass("免费课程页文案配置生效，未配置字段保持默认");
+
+  // 会员中心与后台导航文案生效
+  const memberHome = await call("/member/app/", { cookie: m2Cookie });
+  assert.equal(memberHome.res.status, 200);
+  assert.match(memberHome.text, />会员课程</, "会员导航名称可自定义");
+  assert.match(memberHome.text, />工具台</, "会员首页板块标题可自定义");
+
+  const adminHome = await call("/admin/", { cookie: adminCookie });
+  assert.equal(adminHome.res.status, 200);
+  assert.match(adminHome.text, />用户管理</, "后台导航名称可自定义");
+  pass("会员中心与后台导航文案配置生效且互不影响");
+
+  // 显式提交空值回退默认（不入库）
+  await call("/api/admin/copy", { method: "POST", cookie: adminCookie, body: { "public.nav.home": "" } });
+  const home2 = await call("/");
+  assert.match(home2.text, />网站首页</, "提交空值不应覆盖已保存的自定义文案");
+  pass("空值不会覆盖已保存文案，保留原值");
+
+  // 恢复默认
+  const reset = await call("/api/admin/copy/reset", { method: "POST", cookie: adminCookie });
+  assert.equal(reset.res.status, 200);
+  const home3 = await call("/");
+  assert.match(home3.text, />首页</, "恢复默认后导航回到默认文案");
+  assert.match(home3.text, />免费课程</, "恢复默认后免费课程回到默认");
+  pass("恢复默认文案功能生效");
 }
 
 await Promise.all(pending);
