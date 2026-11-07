@@ -900,6 +900,52 @@ const COPY_DEFAULT = {
   "public.courses.list.description": "",
   "public.courses.category.title": "按分类浏览",
   "public.courses.uncategorized": "未分类",
+  // 公开内容栏目 · 独立站入门
+  "public.guide.title": "独立站入门",
+  "public.guide.description":
+    "在动手之前，先把方向和成本想清楚。这里回答新手最常问的三个问题：独立站是什么、要花多少钱、第一步到底该做什么。",
+  "public.guide.section.title": "全部文章",
+  "public.guide.section.description": "",
+  "public.guide.cta.title": "完整课程体系，仅对会员开放",
+  "public.guide.cta.description": "10 大模块、100+ 节图文课，从入门到持续增长，一个访问码长期使用。",
+  "public.guide.cta.button": "会员中心",
+  // 公开内容栏目 · 选品知识库
+  "public.products.title": "选品知识库",
+  "public.products.description":
+    '选品不是选"看起来会爆"的产品，而是选你能打赢的战场。这里用需求、差异化、利润三条标准，把判断从感觉变成流程。',
+  "public.products.section.title": "全部文章",
+  "public.products.section.description": "",
+  "public.products.cta.title": "选品工具与模板，会员直接使用",
+  "public.products.cta.description": "利润计算器、验证表格、竞品拆解模板，输入数据就能得到结论。",
+  "public.products.cta.button": "会员中心",
+  // 公开内容栏目 · 建站教程（/build/ 与 /tutorials/ 共用）
+  "public.tutorials.title": "建站教程",
+  "public.tutorials.description":
+    '建站的目标不是"好看"，而是让陌生人敢下单。从域名、收款到物流和信任页面，这份教程按真实上线顺序排列。',
+  "public.tutorials.section.title": "全部文章",
+  "public.tutorials.section.description": "",
+  "public.tutorials.cta.title": "建站检查表，上线前一键对照",
+  "public.tutorials.cta.description": "30 项上线检查清单与配置模板，会员可直接下载使用。",
+  "public.tutorials.cta.button": "会员中心",
+  // 公开内容栏目 · 营销知识
+  "public.marketing.title": "营销知识",
+  "public.marketing.description":
+    "独立站的流量只有三条路：付费广告、社媒内容、自然搜索。先把一条跑通，再考虑放大，不然预算只会变成学费。",
+  "public.marketing.section.title": "全部文章",
+  "public.marketing.section.description": "",
+  "public.marketing.cta.title": "广告计算器，会员直接测算",
+  "public.marketing.cta.description": "输入客单价、毛利与广告数据，得到可承受的获客成本和投放建议。",
+  "public.marketing.cta.button": "会员中心",
+  // 案例列表与详情
+  "public.cases.title": "学员案例",
+  "public.cases.description": "真实学员的独立站实战记录：从选品、建站到出单的全过程复盘。",
+  "public.cases.list.title": "全部案例",
+  "public.cases.empty.title": "案例正在整理中",
+  "public.cases.empty.description": "学员案例正在整理中，可以先去免费课程看看。",
+  "public.cases.detail.back": "返回学员案例",
+  "public.cases.detail.cta.title": "会员专享",
+  "public.cases.detail.cta.description": "体系课程、网页工具与可下载资料，凭专属访问码进入。",
+  "public.cases.detail.cta.button": "了解会员",
   // 会员中心导航
   "member.nav.home": "会员首页",
   "member.nav.courses": "图文实战课程",
@@ -922,6 +968,49 @@ const COPY_DEFAULT = {
   "member.home.resources.description": "清单、表格、模板，下载后直接改成自己的。",
   "member.home.updates.title": "更新内容",
   "member.home.updates.description": "最新课程、工具与资料更新。",
+  // 会员课程页面
+  "member.courses.title": "图文实战课程",
+  "member.courses.description":
+    "按 10 个模块组织，建议从「独立站创业入门」开始顺序阅读。带免费标记的内容同时开放给公开知识库。",
+  "member.courses.list.title": "全部课程",
+  "member.courses.empty.title": "暂无课程",
+  "member.courses.empty.description": "课程正在整理中，稍后再来看看。",
+  "member.courses.detail.back": "返回课程列表",
+  "member.courses.detail.cta.title": "需要帮助",
+  "member.courses.detail.cta.description": "实操卡住了，直接微信联系带教，说明你卡在哪一步。",
+  "member.courses.detail.cta.button": "复制微信号",
+  // 会员工具库
+  "member.tools.title": "网页工具库",
+  "member.tools.description": "把定价、广告、利润这些重复计算做成网页工具，填几个数字就能得到结论。",
+  "member.tools.section.title": "全部工具",
+  "member.tools.empty.title": "暂无工具",
+  "member.tools.empty.description": "工具正在上线中，稍后再来看看。",
+  // AI 实操 SOP
+  "member.sop.title": "AI 实操 SOP",
+  "member.sop.description": "把 AI 工作流固化成步骤，从扩词、选品到文案与客服，照着做就能复用。",
+  "member.sop.section.title": "全部 SOP",
+  "member.sop.empty.title": "暂无 SOP",
+  "member.sop.empty.description": "SOP 正在整理中，稍后再来看看。",
+  // 运营资料库
+  "member.resources.title": "运营资料库",
+  "member.resources.description": "SOP、清单、表格与提示词模板，下载后改成自己的版本直接使用。",
+  "member.resources.section.title": "全部资料",
+  "member.resources.empty.title": "暂无资料",
+  "member.resources.empty.description": "资料正在整理中，稍后再来看看。",
+  "member.resources.download.button": "下载",
+  // 更新内容
+  "member.updates.title": "更新内容",
+  "member.updates.description": "课程与资料的最近变动，按时间倒序排列。每次更新都会出现在这里。",
+  "member.updates.section.title": "最近更新",
+  "member.updates.empty.title": "暂无更新",
+  "member.updates.empty.description": "课程与资料更新后会出现在这里。",
+  // 会员登录页
+  "member.login.title": "欢迎进入春哥独立站会员中心",
+  "member.login.description": "请输入购买会员后获得的专属访问码，即可进入会员专属学习空间。",
+  "member.login.input.placeholder": "例如 VG8K-29PX-QM7D",
+  "member.login.submit.button": "进入会员中心",
+  "member.login.help.text":
+    "会员由管理员一对一开通，不需要注册账号、不绑定邮箱。添加微信说明「会员」，开通后会获得一组独立访问码。",
   // 管理员后台导航
   "admin.nav.overview": "概览",
   "admin.nav.members": "会员管理",
@@ -931,6 +1020,23 @@ const COPY_DEFAULT = {
   "admin.nav.cases": "案例管理",
   "admin.nav.settings": "网站设置",
   "admin.nav.audit": "操作日志",
+  // 管理员后台页面标题与描述
+  "admin.pages.members.title": "会员管理",
+  "admin.pages.members.description": "添加会员后系统会生成唯一编号与访问码。明文访问码只在生成时显示一次。",
+  "admin.pages.content.title": "课程管理",
+  "admin.pages.content.description": "课程正文使用 Markdown。草稿不会出现在会员中心；发布后立即对正常会员可见。",
+  "admin.pages.resources.title": "资料管理",
+  "admin.pages.resources.description": "登记资料元数据与 R2 文件路径。付费文件必须放在私有存储，由服务端校验会员后下载。",
+  "admin.pages.tools.title": "工具管理",
+  "admin.pages.tools.description":
+    "维护会员工具库的入口、说明与上下架状态。工具核心计算逻辑在服务端，页面入口必须使用站内受保护路径。",
+  "admin.pages.cases.title": "案例管理",
+  "admin.pages.cases.description": "学员案例与首页、/cases/ 栏目共用同一套数据。草稿与下架案例普通访客不可见。",
+  "admin.pages.settings.title": "网站设置",
+  "admin.pages.settings.description":
+    "这里修改的是全站文案（品牌名、定位、简介、微信与页脚），保存后约 1 分钟内对所有页面生效。页面结构与权限不受影响。",
+  "admin.pages.audit.title": "操作日志",
+  "admin.pages.audit.description": "会员登录、管理员操作与资料下载都会记录。IP 只保存哈希，用于异常排查。",
 };
 
 const COPY_KEYS = Object.keys(COPY_DEFAULT);
@@ -977,12 +1083,24 @@ function publicCopy(copy) {
  */
 function applyCopy(html, copy) {
   if (!html || typeof html !== "string") return html;
-  return html.replace(
+  const out = html.replace(
     /<([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)\sdata-copy="([^"]+)"([^>]*)>([\s\S]*?)<\/\1>/g,
     (match, tag, pre, key, post) => {
       const val = copy[key];
       if (!val || val === COPY_DEFAULT[key]) return match;
       return `<${tag}${pre} data-copy="${key}"${post}>${escapeHtml(val)}</${tag}>`;
+    }
+  );
+  // 输入框 placeholder 属于属性文案，单独处理（仅在同一标签内替换 placeholder 值）
+  return out.replace(
+    /<([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)\sdata-copy-placeholder="([^"]+)"([^>]*)>/g,
+    (match, tag, pre, key, post) => {
+      const val = copy[key];
+      if (!val || val === COPY_DEFAULT[key]) return match;
+      const attrs = `${pre} data-copy-placeholder="${key}"${post}`;
+      const replaced = attrs.replace(/\splaceholder="[^"]*"/, ` placeholder="${escapeHtml(val)}"`);
+      if (replaced === attrs) return match; // 没有 placeholder 属性则不插入
+      return `<${tag}${replaced}>`;
     }
   );
 }
@@ -1354,8 +1472,8 @@ function adminMembersBody() {
 <div class="a-page-head">
   <div>
     <span class="a-eyebrow">Members</span>
-    <h1>会员管理</h1>
-    <p>添加会员后系统会生成唯一编号与访问码。明文访问码只在生成时显示一次。</p>
+    <h1 data-copy="admin.pages.members.title">会员管理</h1>
+    <p data-copy="admin.pages.members.description">添加会员后系统会生成唯一编号与访问码。明文访问码只在生成时显示一次。</p>
   </div>
   <button class="btn btn-primary btn-sm" type="button" data-open-member>添加会员</button>
 </div>
@@ -1423,8 +1541,8 @@ function adminContentBody() {
 <div class="a-page-head">
   <div>
     <span class="a-eyebrow">Courses</span>
-    <h1>课程管理</h1>
-    <p>课程正文使用 Markdown。草稿不会出现在会员中心；发布后立即对正常会员可见。</p>
+    <h1 data-copy="admin.pages.content.title">课程管理</h1>
+    <p data-copy="admin.pages.content.description">课程正文使用 Markdown。草稿不会出现在会员中心；发布后立即对正常会员可见。</p>
   </div>
   <button class="btn btn-primary btn-sm" type="button" data-new-content>新建课程</button>
 </div>
@@ -1496,8 +1614,8 @@ function adminToolsBody() {
 <div class="a-page-head">
   <div>
     <span class="a-eyebrow">Tools</span>
-    <h1>工具管理</h1>
-    <p>维护会员工具库的入口、说明与上下架状态。工具核心计算逻辑在服务端，页面入口必须使用站内受保护路径。</p>
+    <h1 data-copy="admin.pages.tools.title">工具管理</h1>
+    <p data-copy="admin.pages.tools.description">维护会员工具库的入口、说明与上下架状态。工具核心计算逻辑在服务端，页面入口必须使用站内受保护路径。</p>
   </div>
   <button class="btn btn-primary btn-sm" type="button" data-new-tool>添加工具</button>
 </div>
@@ -1545,8 +1663,8 @@ function adminCasesBody() {
 <div class="a-page-head">
   <div>
     <span class="a-eyebrow">Cases</span>
-    <h1>案例管理</h1>
-    <p>学员案例与首页、/cases/ 栏目共用同一套数据。草稿与下架案例普通访客不可见。</p>
+    <h1 data-copy="admin.pages.cases.title">案例管理</h1>
+    <p data-copy="admin.pages.cases.description">学员案例与首页、/cases/ 栏目共用同一套数据。草稿与下架案例普通访客不可见。</p>
   </div>
   <button class="btn btn-primary btn-sm" type="button" data-new-case>新建案例</button>
 </div>
@@ -1611,8 +1729,8 @@ function adminResourcesBody() {
 <div class="a-page-head">
   <div>
     <span class="a-eyebrow">Resources</span>
-    <h1>资料管理</h1>
-    <p>登记资料元数据与 R2 文件路径。付费文件必须放在私有存储，由服务端校验会员后下载。</p>
+    <h1 data-copy="admin.pages.resources.title">资料管理</h1>
+    <p data-copy="admin.pages.resources.description">登记资料元数据与 R2 文件路径。付费文件必须放在私有存储，由服务端校验会员后下载。</p>
   </div>
   <button class="btn btn-primary btn-sm" type="button" data-new-resource>添加资料</button>
 </div>
@@ -1674,8 +1792,8 @@ function adminAuditBody() {
 <div class="a-page-head">
   <div>
     <span class="a-eyebrow">Security Log</span>
-    <h1>操作日志</h1>
-    <p>会员登录、管理员操作与资料下载都会记录。IP 只保存哈希，用于异常排查。</p>
+    <h1 data-copy="admin.pages.audit.title">操作日志</h1>
+    <p data-copy="admin.pages.audit.description">会员登录、管理员操作与资料下载都会记录。IP 只保存哈希，用于异常排查。</p>
   </div>
   <button class="btn btn-ghost btn-sm" type="button" id="audit-refresh">刷新</button>
 </div>
@@ -1701,8 +1819,8 @@ function adminSettingsBody(site, copy) {
 <div class="a-page-head">
   <div>
     <span class="a-eyebrow">Site Settings</span>
-    <h1>网站设置</h1>
-    <p>这里修改的是全站文案（品牌名、定位、简介、微信与页脚），保存后约 1 分钟内对所有页面生效。页面结构与权限不受影响。</p>
+    <h1 data-copy="admin.pages.settings.title">网站设置</h1>
+    <p data-copy="admin.pages.settings.description">这里修改的是全站文案（品牌名、定位、简介、微信与页脚），保存后约 1 分钟内对所有页面生效。页面结构与权限不受影响。</p>
   </div>
 </div>
 <form class="a-form a-settings-form" id="settings-form">
@@ -1727,7 +1845,7 @@ function adminSettingsBody(site, copy) {
   <div>
     <span class="a-eyebrow">Page Copy &amp; Navigation</span>
     <h2>页面文案与导航配置</h2>
-    <p>修改各页面的标题、描述与导航显示名称。只改展示文案，不改变 URL、权限与业务逻辑。留空回退默认值。</p>
+    <p>修改各页面的标题、描述与导航显示名称。只改展示文案，不改变 URL、权限与业务逻辑。留空回退默认值。当前共 <b>${COPY_KEYS.length}</b> 项配置。</p>
   </div>
 </div>
 <form class="a-form a-copy-form" id="copy-form" data-defaults='${escapeHtml(JSON.stringify(COPY_DEFAULT))}'>
@@ -1770,6 +1888,43 @@ const COPY_LABELS = {
   "public.courses.list.description": "免费课程页 · 列表描述",
   "public.courses.category.title": "免费课程页 · 分类区标题",
   "public.courses.uncategorized": "免费课程页 · 未分类名称",
+  "public.guide.title": "独立站入门 · 页面主标题",
+  "public.guide.description": "独立站入门 · 页面描述",
+  "public.guide.section.title": "独立站入门 · 列表标题",
+  "public.guide.section.description": "独立站入门 · 列表描述",
+  "public.guide.cta.title": "独立站入门 · 侧栏引导标题",
+  "public.guide.cta.description": "独立站入门 · 侧栏引导描述",
+  "public.guide.cta.button": "独立站入门 · 侧栏按钮",
+  "public.products.title": "选品知识库 · 页面主标题",
+  "public.products.description": "选品知识库 · 页面描述",
+  "public.products.section.title": "选品知识库 · 列表标题",
+  "public.products.section.description": "选品知识库 · 列表描述",
+  "public.products.cta.title": "选品知识库 · 侧栏引导标题",
+  "public.products.cta.description": "选品知识库 · 侧栏引导描述",
+  "public.products.cta.button": "选品知识库 · 侧栏按钮",
+  "public.tutorials.title": "建站教程 · 页面主标题",
+  "public.tutorials.description": "建站教程 · 页面描述",
+  "public.tutorials.section.title": "建站教程 · 列表标题",
+  "public.tutorials.section.description": "建站教程 · 列表描述",
+  "public.tutorials.cta.title": "建站教程 · 侧栏引导标题",
+  "public.tutorials.cta.description": "建站教程 · 侧栏引导描述",
+  "public.tutorials.cta.button": "建站教程 · 侧栏按钮",
+  "public.marketing.title": "营销知识 · 页面主标题",
+  "public.marketing.description": "营销知识 · 页面描述",
+  "public.marketing.section.title": "营销知识 · 列表标题",
+  "public.marketing.section.description": "营销知识 · 列表描述",
+  "public.marketing.cta.title": "营销知识 · 侧栏引导标题",
+  "public.marketing.cta.description": "营销知识 · 侧栏引导描述",
+  "public.marketing.cta.button": "营销知识 · 侧栏按钮",
+  "public.cases.title": "案例列表 · 页面主标题",
+  "public.cases.description": "案例列表 · 页面描述",
+  "public.cases.list.title": "案例列表 · 列表区域标题",
+  "public.cases.empty.title": "案例列表 · 空状态标题",
+  "public.cases.empty.description": "案例列表 · 空状态描述",
+  "public.cases.detail.back": "案例详情 · 返回按钮",
+  "public.cases.detail.cta.title": "案例详情 · 引导标题",
+  "public.cases.detail.cta.description": "案例详情 · 引导描述",
+  "public.cases.detail.cta.button": "案例详情 · 引导按钮",
   "member.nav.home": "会员导航 · 会员首页",
   "member.nav.courses": "会员导航 · 图文实战课程",
   "member.nav.tools": "会员导航 · 网页工具库",
@@ -1789,6 +1944,41 @@ const COPY_LABELS = {
   "member.home.resources.description": "会员首页 · 运营资料库描述",
   "member.home.updates.title": "会员首页 · 更新内容标题",
   "member.home.updates.description": "会员首页 · 更新内容描述",
+  "member.courses.title": "会员课程页 · 主标题",
+  "member.courses.description": "会员课程页 · 页面描述",
+  "member.courses.list.title": "会员课程页 · 列表标题",
+  "member.courses.empty.title": "会员课程页 · 空状态标题",
+  "member.courses.empty.description": "会员课程页 · 空状态描述",
+  "member.courses.detail.back": "会员课程详情 · 返回按钮",
+  "member.courses.detail.cta.title": "会员课程详情 · 侧栏引导标题",
+  "member.courses.detail.cta.description": "会员课程详情 · 侧栏引导描述",
+  "member.courses.detail.cta.button": "会员课程详情 · 侧栏按钮",
+  "member.tools.title": "会员工具库 · 主标题",
+  "member.tools.description": "会员工具库 · 页面描述",
+  "member.tools.section.title": "会员工具库 · 列表标题",
+  "member.tools.empty.title": "会员工具库 · 空状态标题",
+  "member.tools.empty.description": "会员工具库 · 空状态描述",
+  "member.sop.title": "AI 实操 SOP · 主标题",
+  "member.sop.description": "AI 实操 SOP · 页面描述",
+  "member.sop.section.title": "AI 实操 SOP · 列表标题",
+  "member.sop.empty.title": "AI 实操 SOP · 空状态标题",
+  "member.sop.empty.description": "AI 实操 SOP · 空状态描述",
+  "member.resources.title": "运营资料库 · 主标题",
+  "member.resources.description": "运营资料库 · 页面描述",
+  "member.resources.section.title": "运营资料库 · 列表标题",
+  "member.resources.empty.title": "运营资料库 · 空状态标题",
+  "member.resources.empty.description": "运营资料库 · 空状态描述",
+  "member.resources.download.button": "运营资料库 · 下载按钮",
+  "member.updates.title": "更新内容 · 主标题",
+  "member.updates.description": "更新内容 · 页面描述",
+  "member.updates.section.title": "更新内容 · 列表标题",
+  "member.updates.empty.title": "更新内容 · 空状态标题",
+  "member.updates.empty.description": "更新内容 · 空状态描述",
+  "member.login.title": "会员登录页 · 欢迎标题",
+  "member.login.description": "会员登录页 · 欢迎描述",
+  "member.login.input.placeholder": "会员登录页 · 输入框提示文字",
+  "member.login.submit.button": "会员登录页 · 提交按钮",
+  "member.login.help.text": "会员登录页 · 开通说明",
   "admin.nav.overview": "后台导航 · 概览",
   "admin.nav.members": "后台导航 · 会员管理",
   "admin.nav.content": "后台导航 · 课程管理",
@@ -1797,25 +1987,52 @@ const COPY_LABELS = {
   "admin.nav.cases": "后台导航 · 案例管理",
   "admin.nav.settings": "后台导航 · 网站设置",
   "admin.nav.audit": "后台导航 · 操作日志",
+  "admin.pages.members.title": "后台页面 · 会员管理标题",
+  "admin.pages.members.description": "后台页面 · 会员管理描述",
+  "admin.pages.content.title": "后台页面 · 课程管理标题",
+  "admin.pages.content.description": "后台页面 · 课程管理描述",
+  "admin.pages.resources.title": "后台页面 · 资料管理标题",
+  "admin.pages.resources.description": "后台页面 · 资料管理描述",
+  "admin.pages.tools.title": "后台页面 · 工具管理标题",
+  "admin.pages.tools.description": "后台页面 · 工具管理描述",
+  "admin.pages.cases.title": "后台页面 · 案例管理标题",
+  "admin.pages.cases.description": "后台页面 · 案例管理描述",
+  "admin.pages.settings.title": "后台页面 · 网站设置标题",
+  "admin.pages.settings.description": "后台页面 · 网站设置描述",
+  "admin.pages.audit.title": "后台页面 · 操作日志标题",
+  "admin.pages.audit.description": "后台页面 · 操作日志描述",
 };
 
 const COPY_GROUPS = [
-  { title: "公开网站导航", prefix: "public.nav." },
-  { title: "首页各板块", prefix: "public.home." },
-  { title: "免费课程页面", prefix: "public.courses." },
-  { title: "会员中心导航", prefix: "member.nav." },
-  { title: "会员中心首页", prefix: "member.home." },
-  { title: "管理员后台导航", prefix: "admin.nav." },
+  { title: "公开网站导航", prefixes: ["public.nav."] },
+  { title: "公开网站首页", prefixes: ["public.home."] },
+  { title: "免费课程页面", prefixes: ["public.courses."] },
+  {
+    title: "公开内容栏目页面",
+    prefixes: ["public.guide.", "public.products.", "public.tutorials.", "public.marketing."],
+  },
+  { title: "案例列表与详情", prefixes: ["public.cases."] },
+  { title: "会员中心导航", prefixes: ["member.nav."] },
+  { title: "会员中心首页", prefixes: ["member.home."] },
+  { title: "会员课程页面", prefixes: ["member.courses."] },
+  { title: "会员工具库", prefixes: ["member.tools."] },
+  { title: "AI 实操 SOP", prefixes: ["member.sop."] },
+  { title: "运营资料库", prefixes: ["member.resources."] },
+  { title: "更新内容", prefixes: ["member.updates."] },
+  { title: "会员登录页", prefixes: ["member.login."] },
+  { title: "管理员后台导航", prefixes: ["admin.nav."] },
+  { title: "管理员后台页面", prefixes: ["admin.pages."] },
 ];
 
 function copyFormGroups(copy) {
   return COPY_GROUPS.map((g) => {
-    const keys = COPY_KEYS.filter((k) => k.startsWith(g.prefix));
+    const keys = COPY_KEYS.filter((k) => g.prefixes.some((p) => k.startsWith(p)));
     const rows = keys
       .map((k) => {
         const value = escapeHtml(copy[k] || "");
         const def = escapeHtml(COPY_DEFAULT[k] || "");
-        const isTextarea = k.includes(".description") || k.includes(".intro");
+        const isTextarea =
+          k.includes(".description") || k.includes(".intro") || k.includes(".help.text");
         const control = isTextarea
           ? `<textarea name="${k}" rows="2" maxlength="200" placeholder="${def}">${value}</textarea>`
           : `<input name="${k}" maxlength="200" value="${value}" placeholder="${def}">`;
@@ -1826,7 +2043,11 @@ function copyFormGroups(copy) {
         </label>`;
       })
       .join("");
-    return `<fieldset class="a-copy-group"><legend>${g.title}</legend><div class="a-form-grid">${rows}</div></fieldset>`;
+    // 使用 <details> 折叠分组，配置项较多时避免页面过长；默认展开第一组
+    return `<details class="a-copy-group"${g.title === COPY_GROUPS[0].title ? " open" : ""}>
+      <summary><span>${g.title}</span><small class="a-hint">${keys.length} 项</small></summary>
+      <div class="a-form-grid">${rows}</div>
+    </details>`;
   }).join("");
 }
 
@@ -2063,6 +2284,13 @@ async function renderCourseIndex(env, member) {
 </div>`
     : "";
 
+  const emptyHtml = items.length
+    ? ""
+    : `<div class="m-empty-block" style="padding:40px 0;text-align:center;">
+        <h2 data-copy="member.courses.empty.title" style="font-size:18px;margin:0 0 8px;">暂无课程</h2>
+        <p data-copy="member.courses.empty.description" style="color:var(--muted);font-size:13px;margin:0;">课程正在整理中，稍后再来看看。</p>
+      </div>`;
+
   return memberShell({
     title: "图文实战课程",
     active: "courses",
@@ -2070,8 +2298,8 @@ async function renderCourseIndex(env, member) {
     body: `
 <div class="m-page-head">
   <div class="m-crumb"><a href="/member/app/">会员首页</a><span>/</span><span>图文实战课程</span></div>
-  <h1>图文实战课程</h1>
-  <p>按 10 个模块组织，建议从「独立站创业入门」开始顺序阅读。带 <span class="m-tag free">免费</span> 标记的内容同时开放给公开知识库。</p>
+  <h1 data-copy="member.courses.title">图文实战课程</h1>
+  <p data-copy="member.courses.description">按 10 个模块组织，建议从「独立站创业入门」开始顺序阅读。带 <span class="m-tag free">免费</span> 标记的内容同时开放给公开知识库。</p>
 </div>
 
 <div class="m-note">
@@ -2079,6 +2307,8 @@ async function renderCourseIndex(env, member) {
   <div><b>学习建议：</b>每个模块先读路线图，再按顺序做一遍。不要只收藏不动手，独立站的进步来自一次次小规模测试。</div>
 </div>
 
+<div class="m-section-head" style="margin:26px 0 12px;font-size:12.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;"><span data-copy="member.courses.list.title">全部课程</span></div>
+${emptyHtml}
 <div class="m-cats">${blocks}${uncategorizedHtml}</div>`,
   });
 }
@@ -2174,15 +2404,16 @@ async function renderCourseDetail(env, member, slug) {
       <span>${prev ? `<a href="/member/app/courses/${escapeHtml(prev.slug)}">← ${escapeHtml(prev.title)}</a>` : "<span>已经是第一篇</span>"}</span>
       <span>${next ? `<a href="/member/app/courses/${escapeHtml(next.slug)}">${escapeHtml(next.title)} →</a>` : "<span>本模块已全部读完</span>"}</span>
     </div>
+    <p style="margin-top:22px;"><a class="btn btn-ghost btn-sm" href="/member/app/courses/"><span data-copy="member.courses.detail.back">返回课程列表</span></a></p>
   </div>
   <aside class="m-aside">
     ${tocHtml}
     ${chaptersHtml}
     <div class="m-aside-card">
-      <h3>需要帮助</h3>
-      <p style="margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--muted);">实操卡住了，直接微信联系带教，说明你卡在哪一步。</p>
+      <h3 data-copy="member.courses.detail.cta.title">需要帮助</h3>
+      <p data-copy="member.courses.detail.cta.description" style="margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--muted);">实操卡住了，直接微信联系带教，说明你卡在哪一步。</p>
       <p style="margin-top:8px;font-family:var(--font-mono);font-size:12px;color:var(--ink);">ch022427</p>
-      <button class="m-linkbtn" type="button" data-copy="ch022427">复制微信号</button>
+      <button class="m-linkbtn" type="button" data-copy-text="ch022427"><span data-copy="member.courses.detail.cta.button">复制微信号</span></button>
     </div>
   </aside>
 </div>`;
@@ -2215,19 +2446,22 @@ async function renderToolsPage(env, member) {
     body: `
 <div class="m-page-head">
   <div class="m-crumb"><a href="/member/app/">会员首页</a><span>/</span><span>网页工具库</span></div>
-  <h1>网页工具库</h1>
-  <p>把定价、广告、利润这些重复计算做成网页工具，填几个数字就能得到结论。</p>
+  <h1 data-copy="member.tools.title">网页工具库</h1>
+  <p data-copy="member.tools.description">把定价、广告、利润这些重复计算做成网页工具，填几个数字就能得到结论。</p>
 </div>
 <div class="m-note">
   <span class="m-note-ico" aria-hidden="true">i</span>
   <div><b>入口已迁移到站内受保护路径：</b>每次打开工具页与每次提交计算，服务端都会重新校验会员身份与工具状态，旧 GitHub Pages 地址不再作为会员入口。</div>
 </div>
-<div class="m-tools">${cards || '<p class="m-empty-row">暂无已发布工具。</p>'}</div>`,
+<div class="m-section-head" style="margin:26px 0 12px;font-size:12.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;"><span data-copy="member.tools.section.title">全部工具</span></div>
+<div class="m-tools">${cards || `<div class="m-empty-block" style="padding:40px 0;text-align:center;"><h2 data-copy="member.tools.empty.title" style="font-size:18px;margin:0 0 8px;">暂无工具</h2><p data-copy="member.tools.empty.description" style="color:var(--muted);font-size:13px;margin:0;">工具正在上线中，稍后再来看看。</p></div>`}</div>`,
   });
 }
 
-async function renderResourceList(env, member, slugs, title, active, intro) {
+async function renderResourceList(env, member, slugs, title, active, intro, copyPrefix = "member.resources") {
   const resources = await loadPublishedResources(env, slugs);
+  const d = (k) => COPY_DEFAULT[k] || "";
+  const downloadAttr = copyPrefix === "member.resources" ? ` data-copy="member.resources.download.button"` : "";
   const rows = resources
     .map(
       (item) => `<div class="m-res">
@@ -2242,7 +2476,9 @@ async function renderResourceList(env, member, slugs, title, active, intro) {
       <span>更新 ${formatDate(item.updated_at)}</span>
     </div>
   </div>
-  <a class="btn btn-ghost btn-sm" href="/member/app/resources/${item.id}/download">下载</a>
+  <a class="btn btn-ghost btn-sm" href="/member/app/resources/${item.id}/download"><span${downloadAttr}>${escapeHtml(
+        copyPrefix === "member.resources" ? d("member.resources.download.button") : "打开"
+      )}</span></a>
 </div>`
     )
     .join("");
@@ -2254,14 +2490,24 @@ async function renderResourceList(env, member, slugs, title, active, intro) {
     body: `
 <div class="m-page-head">
   <div class="m-crumb"><a href="/member/app/">会员首页</a><span>/</span><span>${escapeHtml(title)}</span></div>
-  <h1>${escapeHtml(title)}</h1>
-  <p>${escapeHtml(intro)}</p>
+  <h1 data-copy="${copyPrefix}.title">${escapeHtml(d(`${copyPrefix}.title`))}</h1>
+  <p data-copy="${copyPrefix}.description">${escapeHtml(d(`${copyPrefix}.description`))}</p>
 </div>
 <div class="m-note">
   <span class="m-note-ico" aria-hidden="true">i</span>
   <div><b>文件保护：</b>付费资料存放在 R2 私有存储，每次下载都会先校验会员身份，不提供公开直链。演示数据尚未上传真实文件。</div>
 </div>
-<div class="m-res-list">${rows || '<p class="m-empty-row">暂无已发布资料。</p>'}</div>`,
+<div class="m-section-head" style="margin:26px 0 12px;font-size:12.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;"><span data-copy="${copyPrefix}.section.title">${escapeHtml(
+      d(`${copyPrefix}.section.title`)
+    )}</span></div>
+<div class="m-res-list">${
+      rows ||
+      `<div class="m-empty-block" style="padding:40px 0;text-align:center;"><h2 data-copy="${copyPrefix}.empty.title" style="font-size:18px;margin:0 0 8px;">${escapeHtml(
+        d(`${copyPrefix}.empty.title`)
+      )}</h2><p data-copy="${copyPrefix}.empty.description" style="color:var(--muted);font-size:13px;margin:0;">${escapeHtml(
+        d(`${copyPrefix}.empty.description`)
+      )}</p></div>`
+    }</div>`,
   });
 }
 
@@ -2315,11 +2561,15 @@ async function renderUpdates(env, member) {
     body: `
 <div class="m-page-head">
   <div class="m-crumb"><a href="/member/app/">会员首页</a><span>/</span><span>更新内容</span></div>
-  <h1>更新内容</h1>
-  <p>课程与资料的最近变动，按时间倒序排列。每次更新都会出现在这里。</p>
+  <h1 data-copy="member.updates.title">更新内容</h1>
+  <p data-copy="member.updates.description">课程与资料的最近变动，按时间倒序排列。每次更新都会出现在这里。</p>
 </div>
+<div class="m-section-head" style="margin:0 0 12px;font-size:12.5px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;"><span data-copy="member.updates.section.title">最近更新</span></div>
 <div class="m-panel" style="padding:24px 26px;">
-  <div class="m-updates">${rows || '<p class="m-empty-row">暂无更新。</p>'}</div>
+  <div class="m-updates">${
+    rows ||
+    `<div class="m-empty-block" style="padding:40px 0;text-align:center;"><h2 data-copy="member.updates.empty.title" style="font-size:18px;margin:0 0 8px;">暂无更新</h2><p data-copy="member.updates.empty.description" style="color:var(--muted);font-size:13px;margin:0;">课程与资料更新后会出现在这里。</p></div>`
+  }</div>
 </div>`,
   });
 }
@@ -2381,7 +2631,8 @@ async function handleMemberApp(request, env, ctx, url, session) {
         ["sop", "prompt"],
         "AI 实操 SOP",
         "sop",
-        "把 AI 工作流固化成步骤，从扩词、选品到文案与客服，照着做就能复用。"
+        "把 AI 工作流固化成步骤，从扩词、选品到文案与客服，照着做就能复用。",
+        "member.sop"
       ),
       { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS } }
     );
@@ -2659,19 +2910,25 @@ async function handlePublicCaseList(request, env) {
     ).results || [];
 
   const listHtml = rows.length
-    ? `<div class="case-grid">${rows.map(caseCardHtml).join("")}</div>`
-    : `<p style="color:var(--muted);font-size:13px;">学员案例正在整理中，可以先去<a href="/courses/" style="color:var(--orange-deep);">免费课程</a>看看。</p>`;
+    ? `<div class="list-head" style="display:flex;align-items:baseline;justify-content:space-between;margin:0 0 18px;"><h2 data-copy="public.cases.list.title" style="margin:0;">全部案例</h2><span style="color:var(--muted);font-size:12px;">共 ${rows.length} 篇</span></div><div class="case-grid">${rows.map(caseCardHtml).join("")}</div>`
+    : `<div class="case-empty" style="padding:24px 0;">
+        <h2 data-copy="public.cases.empty.title" style="font-size:18px;margin:0 0 8px;">案例正在整理中</h2>
+        <p data-copy="public.cases.empty.description" style="color:var(--muted);font-size:13px;margin:0;">学员案例正在整理中，可以先去<a href="/courses/" style="color:var(--orange-deep);">免费课程</a>看看。</p>
+      </div>`;
 
   const body = `
 <div class="m-page-head">
-  <h1>学员案例</h1>
-  <p>真实学员的独立站实战记录：从选品、建站到出单的全过程复盘。</p>
+  <h1 data-copy="public.cases.title">学员案例</h1>
+  <p data-copy="public.cases.description">真实学员的独立站实战记录：从选品、建站到出单的全过程复盘。</p>
 </div>
 <div style="margin-top:24px;">${listHtml}</div>`;
 
-  return new Response(publicShell({ title: "学员案例", description: "独立站春哥学员案例，真实独立站实战复盘。", body }), {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
-  });
+  return new Response(
+    publicShell({ title: "学员案例", description: "独立站春哥学员案例，真实独立站实战复盘。", body }),
+    {
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
+    }
+  );
 }
 
 async function handlePublicCaseDetail(request, env, url) {
@@ -2690,7 +2947,7 @@ async function handlePublicCaseDetail(request, env, url) {
       publicShell({
         title: "案例不存在",
         description: "案例不存在或尚未发布。",
-        body: `<div class="m-page-head"><h1>案例不存在或尚未发布</h1><p>可以返回案例列表查看其他学员案例。</p></div><a class="btn btn-primary" href="/cases/">返回学员案例</a>`,
+        body: `<div class="m-page-head"><h1>案例不存在或尚未发布</h1><p>可以返回案例列表查看其他学员案例。</p></div><a class="btn btn-primary" href="/cases/"><span data-copy="public.cases.detail.back">返回学员案例</span></a>`,
       }),
       { status: 404, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS } }
     );
@@ -2721,12 +2978,13 @@ async function handlePublicCaseDetail(request, env, url) {
     ${coverHtml}
     <article class="prose m-article-body">${rendered.html}</article>
     ${linkHtml}
+    <p style="margin-top:28px;"><a class="btn btn-ghost btn-sm" href="/cases/"><span data-copy="public.cases.detail.back">返回学员案例</span></a></p>
   </div>
   <aside class="m-aside">
     <div class="m-aside-card">
-      <h3>会员专享</h3>
-      <p style="margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--muted);">体系课程、网页工具与可下载资料，凭专属访问码进入。</p>
-      <a class="btn btn-primary btn-sm" style="margin-top:14px;" href="/member/">了解会员</a>
+      <h3 data-copy="public.cases.detail.cta.title">会员专享</h3>
+      <p data-copy="public.cases.detail.cta.description" style="margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--muted);">体系课程、网页工具与可下载资料，凭专属访问码进入。</p>
+      <a class="btn btn-primary btn-sm" style="margin-top:14px;" href="/member/"><span data-copy="public.cases.detail.cta.button">了解会员</span></a>
     </div>
   </aside>
 </div>`;

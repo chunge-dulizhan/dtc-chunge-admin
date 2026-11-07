@@ -54,9 +54,15 @@ const env = {
       }
       // 模拟首页等静态页：带 data-copy 标记，便于测试文案替换
       return new Response(
-        `<html>static<nav><a href="/"><span data-copy="public.nav.home">首页</span></a><a href="/courses/"><span data-copy="public.nav.courses">免费课程</span></a><a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span></a></nav>` +
+        `<html>static<nav><a href="/"><span data-copy="public.nav.home">首页</span></a><a href="/courses/"><span data-copy="public.nav.courses">免费课程</span></a><a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span></a><a href="/build/"><span data-copy="public.nav.build">建站教程</span></a></nav>` +
           `<h1 data-copy="public.home.hero.title">默认首页标题</h1>` +
-          `<p data-copy="public.home.cases.description">默认案例描述</p></html>`,
+          `<p data-copy="public.home.cases.description">默认案例描述</p>` +
+          `<h1 data-copy="public.guide.title">独立站入门</h1>` +
+          `<p data-copy="public.products.description">默认选品描述</p>` +
+          `<h4 data-copy="public.tutorials.cta.title">默认建站引导</h4>` +
+          `<a class="btn" href="/member/"><span data-copy="public.marketing.cta.button">会员中心</span></a>` +
+          `<h2 data-copy="member.login.title">欢迎进入春哥独立站会员中心</h2>` +
+          `<input id="access-code" name="access-code" placeholder="例如 VG8K-29PX-QM7D" data-copy-placeholder="member.login.input.placeholder"></html>`,
         { headers: { "Content-Type": "text/html" } }
       );
     },
@@ -1503,6 +1509,206 @@ let memberCookie = "";
   assert.match(home3.text, />首页</, "恢复默认后导航回到默认文案");
   assert.match(home3.text, />免费课程</, "恢复默认后免费课程回到默认");
   pass("恢复默认文案功能生效");
+}
+
+/* ---------------- 29. 第一阶段：全站文案覆盖扩展 ---------------- */
+{
+  // 重新登录会员，供会员页面断言使用
+  const login = await call("/api/member/login", { method: "POST", body: { code: created[1].access_code } });
+  assert.equal(login.res.status, 200, login.text);
+  const memberCookie = setCookieToken(login.res);
+
+  // 静态栏目页与登录页：服务端 data-copy / data-copy-placeholder 替换
+  const saveStatic = await call("/api/admin/copy", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      "public.guide.title": "新手入门指南",
+      "public.products.description": "爆品选品方法论",
+      "public.tutorials.cta.title": "Shopify 建站清单",
+      "public.marketing.cta.button": "进入会员",
+      "member.login.title": "会员登录入口",
+      "member.login.input.placeholder": "请输入 12 位访问码",
+    },
+  });
+  assert.equal(saveStatic.res.status, 200, saveStatic.text);
+
+  const staticPage = await call("/guide/");
+  assert.match(staticPage.text, />新手入门指南</, "栏目页主标题必须替换");
+  assert.match(staticPage.text, /爆品选品方法论/, "栏目页描述必须替换");
+  assert.match(staticPage.text, /Shopify 建站清单/, "栏目页 CTA 标题必须替换");
+  assert.match(staticPage.text, />进入会员</, "CTA 按钮文字必须替换");
+  assert.match(staticPage.text, /href="\/member\/"/, "修改 CTA 文字不得改变 href");
+  assert.match(staticPage.text, />会员登录入口</, "会员登录页标题必须替换");
+  assert.match(staticPage.text, /placeholder="请输入 12 位访问码"/, "输入框 placeholder 必须替换");
+  pass("静态栏目页与会员登录页文案替换（含 placeholder 属性）");
+
+  // 案例列表页
+  const caseSave = await call("/api/admin/copy", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      "public.cases.title": "成功案例合集",
+      "public.cases.description": "学员真实复盘记录",
+      "public.cases.list.title": "案例目录",
+    },
+  });
+  assert.equal(caseSave.res.status, 200, caseSave.text);
+  const caseList = await call("/cases/");
+  assert.match(caseList.text, />成功案例合集</, "案例列表主标题必须替换");
+  assert.match(caseList.text, /学员真实复盘记录/, "案例列表描述必须替换");
+  assert.match(caseList.text, />案例目录</, "案例列表区域标题必须替换");
+  pass("案例列表页文案可修改");
+
+  // 案例详情页（新建一篇已发布案例，确保详情存在）
+  const caseCreate = await call("/api/admin/cases", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "文案测试案例", slug: "copy-test-case", category: "测试", status: "published", body: "## 正文\n\n内容", summary: "摘要" },
+  });
+  assert.ok([200, 201].includes(caseCreate.res.status), caseCreate.text);
+  await call("/api/admin/copy", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      "public.cases.detail.back": "返回列表",
+      "public.cases.detail.cta.title": "加入会员解锁",
+      "public.cases.detail.cta.description": "全部课程与工具",
+      "public.cases.detail.cta.button": "立即咨询",
+    },
+  });
+  const caseDetail = await call("/cases/copy-test-case/");
+  assert.equal(caseDetail.res.status, 200, caseDetail.text);
+  assert.match(caseDetail.text, />返回列表</, "案例详情返回按钮必须替换");
+  assert.match(caseDetail.text, />加入会员解锁</, "案例详情 CTA 标题必须替换");
+  assert.match(caseDetail.text, /全部课程与工具/, "案例详情 CTA 描述必须替换");
+  assert.match(caseDetail.text, />立即咨询</, "案例详情 CTA 按钮必须替换");
+  assert.match(caseDetail.text, /href="\/member\/"/, "案例 CTA 修改文案不改变 href");
+  pass("案例详情页 CTA 可修改且不改变链接");
+
+  // 会员课程页
+  await call("/api/admin/copy", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      "member.courses.title": "实战课程中心",
+      "member.courses.description": "按模块循序学习",
+      "member.courses.list.title": "课程总览",
+      "member.courses.detail.back": "回到课程",
+    },
+  });
+  const mCourses = await call("/member/app/courses/", { cookie: memberCookie });
+  assert.equal(mCourses.res.status, 200, mCourses.text);
+  assert.match(mCourses.text, />实战课程中心</, "会员课程页标题必须替换");
+  assert.match(mCourses.text, /按模块循序学习/, "会员课程页描述必须替换");
+  assert.match(mCourses.text, />课程总览</, "会员课程列表标题必须替换");
+
+  const mCourseDetail = await call("/member/app/courses/" + (mCourses.text.match(/\/member\/app\/courses\/([a-z0-9-]+)\//) || [])[1] + "/", {
+    cookie: memberCookie,
+  });
+  if (mCourseDetail.res.status === 200) {
+    assert.match(mCourseDetail.text, />回到课程</, "会员课程详情返回按钮必须替换");
+  }
+  pass("会员课程列表与详情页文案可修改");
+
+  // 会员工具 / SOP / 资料 / 更新 页面
+  await call("/api/admin/copy", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      "member.tools.title": "工具工作台",
+      "member.tools.description": "在线测算一站式",
+      "member.tools.section.title": "工具清单",
+      "member.resources.title": "资料下载区",
+      "member.resources.description": "模板与清单",
+      "member.resources.download.button": "获取资料",
+      "member.updates.title": "更新动态",
+      "member.updates.description": "最近上新记录",
+      "member.updates.section.title": "最新变动",
+    },
+  });
+  const mTools = await call("/member/app/tools/", { cookie: memberCookie });
+  assert.equal(mTools.res.status, 200, mTools.text);
+  assert.match(mTools.text, />工具工作台</, "会员工具库标题必须替换");
+  assert.match(mTools.text, /在线测算一站式/, "会员工具库描述必须替换");
+  assert.match(mTools.text, />工具清单</, "工具库列表标题必须替换");
+
+  const mRes = await call("/member/app/resources/", { cookie: memberCookie });
+  assert.equal(mRes.res.status, 200, mRes.text);
+  assert.match(mRes.text, />资料下载区</, "运营资料库标题必须替换");
+  assert.match(mRes.text, /模板与清单/, "运营资料库描述必须替换");
+
+  const mUpdates = await call("/member/app/updates/", { cookie: memberCookie });
+  assert.equal(mUpdates.res.status, 200, mUpdates.text);
+  assert.match(mUpdates.text, />更新动态</, "更新内容标题必须替换");
+  assert.match(mUpdates.text, /最近上新记录/, "更新内容描述必须替换");
+  assert.match(mUpdates.text, />最新变动</, "更新内容列表标题必须替换");
+  pass("会员工具库 / 运营资料库 / 更新内容文案可修改");
+
+  // SOP 使用 member.sop.* 命名空间
+  await call("/api/admin/copy", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { "member.sop.title": "AI 工作流", "member.sop.description": "固化可复用步骤" },
+  });
+  const mSop = await call("/member/app/sop/", { cookie: memberCookie });
+  assert.equal(mSop.res.status, 200, mSop.text);
+  assert.match(mSop.text, />AI 工作流</, "AI 实操 SOP 标题必须替换");
+  assert.match(mSop.text, /固化可复用步骤/, "AI 实操 SOP 描述必须替换");
+  pass("AI 实操 SOP 文案可修改");
+
+  // 管理员后台页面标题与描述
+  await call("/api/admin/copy", {
+    method: "POST",
+    cookie: adminCookie,
+    body: {
+      "admin.pages.members.title": "用户中心",
+      "admin.pages.members.description": "全部会员都在这里",
+    },
+  });
+  const adminMembers = await call("/admin/members/", { cookie: adminCookie });
+  assert.equal(adminMembers.res.status, 200, adminMembers.text);
+  assert.match(adminMembers.text, />用户中心</, "后台页面标题必须替换");
+  assert.match(adminMembers.text, /全部会员都在这里/, "后台页面描述必须替换");
+  pass("管理员后台页面标题与描述可修改");
+
+  // 新增配置项完整性：无重复 key，且全部纳入分组
+  const adminCopyAll = await call("/api/admin/copy", { cookie: adminCookie });
+  assert.equal(adminCopyAll.res.status, 200);
+  const allKeys = Object.keys(adminCopyAll.data.item);
+  assert.equal(new Set(allKeys).size, allKeys.length, "配置 key 不得重复");
+  assert.ok(allKeys.length >= 100, `新增覆盖后配置项应超过 100 项，当前 ${allKeys.length}`);
+  assert.ok(allKeys.some((k) => k.startsWith("public.cases.")), "必须包含案例配置");
+  assert.ok(allKeys.some((k) => k.startsWith("member.login.")), "必须包含会员登录页配置");
+  assert.ok(allKeys.some((k) => k.startsWith("admin.pages.")), "必须包含后台页面配置");
+  pass("新增配置项完整且无重复 key");
+
+  // 恢复默认后，新增页面文案回到默认
+  const resetAll = await call("/api/admin/copy/reset", { method: "POST", cookie: adminCookie });
+  assert.equal(resetAll.res.status, 200);
+  const caseListDefault = await call("/cases/");
+  assert.match(caseListDefault.text, />学员案例</, "恢复默认后案例列表标题回默认");
+  const mToolsDefault = await call("/member/app/tools/", { cookie: memberCookie });
+  assert.match(mToolsDefault.text, />网页工具库</, "恢复默认后会员工具库标题回默认");
+  pass("恢复默认后新增页面文案正确回退");
+}
+
+/* ---------------- 30. 导航点击不被复制逻辑拦截 ---------------- */
+{
+  const siteJs = readFileSync(join(root, "public", "assets", "js", "site.js"), "utf8");
+  assert.ok(!/closest\("\[data-copy\]"\)/.test(siteJs), "site.js 不得再把 data-copy 当作复制对象");
+  assert.match(siteJs, /data-copy-text/, "site.js 复制逻辑必须绑定 data-copy-text");
+  const memberJs = readFileSync(join(root, "public", "assets", "js", "member.js"), "utf8");
+  assert.ok(!/querySelectorAll\("\[data-copy\]"\)/.test(memberJs), "member.js 不得监听 data-copy 导航元素");
+  assert.match(memberJs, /data-copy-text/, "member.js 复制逻辑必须绑定 data-copy-text");
+  pass("导航复制逻辑已隔离到 data-copy-text 专用按钮");
+
+  // 导航元素带文案配置键，但仍保留原始 href
+  const homeNav = await call("/");
+  assert.match(homeNav.text, /<a[^>]*href="\/"[^>]*>[^<]*<span data-copy="public.nav.home">/, "首页导航链接必须保留 href");
+  assert.match(homeNav.text, /data-copy="public.nav.build"/, "建站教程导航带配置键");
+  assert.match(homeNav.text, /href="\/build\/"/, "建站教程导航 href 保持 /build/");
+  pass("导航链接保留 href 且仅文字可配置");
 }
 
 await Promise.all(pending);

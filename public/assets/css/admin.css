@@ -584,15 +584,49 @@
 .a-copy-group {
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 16px 18px;
-  margin-bottom: 18px;
+  padding: 0 18px 16px;
+  margin-bottom: 14px;
+  background: #fff;
 }
 
-.a-copy-group legend {
-  padding: 0 8px;
+.a-copy-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  padding: 14px 0;
   font-weight: 600;
   color: var(--text);
   font-size: 14px;
+}
+
+.a-copy-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.a-copy-group > summary::before {
+  content: "▸";
+  font-size: 12px;
+  color: var(--muted);
+  transition: transform 0.18s ease;
+}
+
+.a-copy-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.a-copy-group > summary > span {
+  flex: 1;
+}
+
+.a-copy-group > summary > small {
+  font-weight: 400;
+}
+
+.a-copy-group > .a-form-grid {
+  padding-top: 4px;
 }
 
 .a-copy-field {

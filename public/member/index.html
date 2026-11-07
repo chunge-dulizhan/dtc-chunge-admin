@@ -62,8 +62,8 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.5" r="1.2"/></svg>
         </span>
 
-        <h2>欢迎进入春哥独立站会员中心</h2>
-        <p class="lead">请输入购买会员后获得的专属访问码，即可进入会员专属学习空间。</p>
+        <h2 data-copy="member.login.title">欢迎进入春哥独立站会员中心</h2>
+        <p class="lead" data-copy="member.login.description">请输入购买会员后获得的专属访问码，即可进入会员专属学习空间。</p>
 
         <form class="login-form" id="member-login-form" novalidate>
           <div class="field">
@@ -78,6 +78,7 @@
               spellcheck="false"
               maxlength="14"
               placeholder="例如 VG8K-29PX-QM7D"
+              data-copy-placeholder="member.login.input.placeholder"
               aria-describedby="code-hint">
             <p class="field-hint" id="code-hint">12 位字符，不区分大小写 · 输入时自动分段</p>
           </div>
@@ -87,7 +88,7 @@
             <span class="form-alert-text"></span>
           </div>
 
-          <button class="btn btn-primary btn-block" type="submit">进入会员中心</button>
+          <button class="btn btn-primary btn-block" type="submit"><span data-copy="member.login.submit.button">进入会员中心</span></button>
         </form>
 
         <div class="member-state" id="member-state" hidden>
@@ -104,10 +105,10 @@
         <div class="login-divider">还没有访问码？</div>
 
         <div class="login-helper">
-          <p>会员由管理员一对一开通，不需要注册账号、不绑定邮箱。添加微信说明「会员」，开通后会获得一组独立访问码。</p>
+          <p data-copy="member.login.help.text">会员由管理员一对一开通，不需要注册账号、不绑定邮箱。添加微信说明「会员」，开通后会获得一组独立访问码。</p>
           <div class="copy-row">
             <span>带教咨询微信 <b>ch022427</b></span>
-            <button class="login-copy" type="button" data-copy="ch022427">复制微信号</button>
+            <button class="login-copy" type="button" data-copy-text="ch022427">复制微信号</button>
           </div>
         </div>
 

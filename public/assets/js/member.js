@@ -47,9 +47,10 @@
     });
   });
 
-  document.querySelectorAll("[data-copy]").forEach(function (button) {
+  // 只绑定显式复制按钮（data-copy-text），避免把导航文案配置键 data-copy 当成复制对象。
+  document.querySelectorAll("[data-copy-text]").forEach(function (button) {
     button.addEventListener("click", function () {
-      var text = button.getAttribute("data-copy") || "";
+      var text = button.getAttribute("data-copy-text") || "";
       var done = function () {
         var old = button.textContent;
         button.textContent = "已复制";

@@ -52,11 +52,13 @@
     });
   }
 
+  // 只处理显式的复制按钮（data-copy-text），绝不拦截普通导航链接。
+  // data-copy 是服务端文案配置键，不属于客户端交互标记。
   document.addEventListener("click", function (event) {
-    var trigger = event.target.closest("[data-copy]");
+    var trigger = event.target.closest("[data-copy-text]");
     if (!trigger) return;
     event.preventDefault();
-    var value = trigger.getAttribute("data-copy");
+    var value = trigger.getAttribute("data-copy-text") || "";
     copyText(value).then(
       function () {
         showToast("已复制：" + value);
