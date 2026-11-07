@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS content_categories (
   type        TEXT    NOT NULL DEFAULT 'course',      -- course | resource | tool
   description TEXT,
   sort_order  INTEGER NOT NULL DEFAULT 0,
+  status      TEXT    NOT NULL DEFAULT 'active',      -- active | disabled
   created_at  TEXT    NOT NULL
 );
 
@@ -94,23 +95,38 @@ CREATE TABLE IF NOT EXISTS content_categories (
 -- 课程 / 图文内容
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS contents (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  title        TEXT    NOT NULL,
-  slug         TEXT    NOT NULL,
-  category_id  INTEGER REFERENCES content_categories(id),
-  content_type TEXT    NOT NULL DEFAULT 'article',    -- article | chapter
-  excerpt      TEXT,
-  body         TEXT    NOT NULL DEFAULT '',           -- Markdown
-  access_level TEXT    NOT NULL DEFAULT 'member',     -- free | member
-  status       TEXT    NOT NULL DEFAULT 'draft',      -- draft | published | archived
-  sort_order   INTEGER NOT NULL DEFAULT 0,
-  created_at   TEXT    NOT NULL,
-  updated_at   TEXT    NOT NULL,
-  published_at TEXT
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  title          TEXT    NOT NULL,
+  slug           TEXT    NOT NULL,
+  category_id    INTEGER REFERENCES content_categories(id),
+  content_type   TEXT    NOT NULL DEFAULT 'article',    -- article | chapter
+  nav_category   TEXT,                                   -- guide|products|build|marketing
+  content_format TEXT    NOT NULL DEFAULT 'markdown',   -- markdown | html
+  excerpt        TEXT,
+  body           TEXT    NOT NULL DEFAULT '',           -- Markdown 或过滤后的 HTML
+  cover_image    TEXT,                                   -- /media/ 开头的站内图片
+  access_level   TEXT    NOT NULL DEFAULT 'member',     -- free | member
+  status         TEXT    NOT NULL DEFAULT 'draft',      -- draft | published | archived
+  sort_order     INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT    NOT NULL,
+  updated_at     TEXT    NOT NULL,
+  published_at   TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_contents_slug ON contents(slug);
 CREATE INDEX IF NOT EXISTS idx_contents_category ON contents(category_id);
 CREATE INDEX IF NOT EXISTS idx_contents_status ON contents(status);
+CREATE INDEX IF NOT EXISTS idx_contents_nav_category ON contents(nav_category);
+
+-- 章节课的章节内容（同页内切换）
+CREATE TABLE IF NOT EXISTS content_chapters (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  content_id INTEGER NOT NULL REFERENCES contents(id) ON DELETE CASCADE,
+  title      TEXT    NOT NULL,
+  body       TEXT    NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_content_chapters_content ON content_chapters(content_id, sort_order);
 
 -- ------------------------------------------------------------
 -- 附件 / 资料（文件本体在 R2 私有存储）
@@ -206,7 +222,8 @@ CREATE TABLE IF NOT EXISTS cases (
   slug          TEXT    NOT NULL UNIQUE,
   cover_image   TEXT,                                  -- /media/ 开头的站内图片地址
   summary       TEXT,
-  body          TEXT    NOT NULL DEFAULT '',           -- Markdown
+  body          TEXT    NOT NULL DEFAULT '',           -- Markdown 或过滤后的 HTML
+  content_format TEXT   NOT NULL DEFAULT 'markdown',   -- markdown | html
   category      TEXT,
   external_link TEXT,                                  -- 选填外部链接
   status        TEXT    NOT NULL DEFAULT 'draft',      -- draft | published | archived | deleted

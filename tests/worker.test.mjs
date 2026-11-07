@@ -147,12 +147,12 @@ const created = [];
   for (const name of ["阿凯", "小雨", "老周"]) {
     const r = await call("/api/admin/members", { method: "POST", body: { name, contact: "微信 " + name, source: "公众号" }, cookie: adminCookie });
     assert.equal(r.res.status, 200, "添加会员失败：" + r.text);
-    assert.match(r.data.member.member_code, /^CH\d{3}$/);
+    assert.match(r.data.member.member_code, /^CG\d{4}$/);
     assert.match(r.data.access_code, /^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     created.push(r.data);
   }
-  assert.deepEqual(created.map((m) => m.member.member_code), ["CH001", "CH002", "CH003"]);
-  pass("自动生成 CH001/CH002/CH003 会员编号");
+  assert.deepEqual(created.map((m) => m.member.member_code), ["CG0001", "CG0002", "CG0003"]);
+  pass("自动生成 CG0001/CG0002/CG0003 会员编号");
 
   assert.notEqual(created[0].access_code, created[1].access_code);
   pass("不同会员获得不同访问码");
@@ -198,7 +198,7 @@ let memberCookie = "";
   assert.equal(other.res.status, 200, other.text);
   const otherCookie = setCookieToken(other.res);
   const otherSession = await call("/api/member/session", { cookie: otherCookie });
-  assert.equal(otherSession.data.member.member_code, "CH002");
+  assert.equal(otherSession.data.member.member_code, "CG0002");
   pass("不同会员登录后身份各自独立、不会混用");
 }
 
@@ -206,7 +206,7 @@ let memberCookie = "";
 {
   const r = await call("/api/member/session", { cookie: memberCookie });
   assert.equal(r.res.status, 200);
-  assert.equal(r.data.member.member_code, "CH001");
+  assert.equal(r.data.member.member_code, "CG0001");
   pass("会话在刷新/再次请求时保持有效");
 }
 
@@ -316,7 +316,7 @@ let memberCookie = "";
   assert.equal(bytes[1], 0xbb);
   assert.equal(bytes[2], 0xbf);
   assert.match(text, /会员编号/);
-  assert.match(text, /CH001/);
+  assert.match(text, /CG0001/);
   assert.ok(!text.includes(created[0].access_code), "导出不得包含明文访问码");
   pass("CSV 导出可用，且不含明文访问码");
 }
@@ -379,7 +379,7 @@ let memberCookie = "";
   assert.equal(home.res.status, 200, "会员应能打开会员首页");
   assert.match(home.text, /欢迎回来/);
   assert.match(home.text, /测试会员/);
-  assert.match(home.text, /CH001|CH00/);
+  assert.match(home.text, /CG0001|CG00/);
   pass("会员登录后可打开会员首页并显示身份信息");
 
   const detail = await call("/member/app/courses/90-day-roadmap", { cookie });
@@ -1533,15 +1533,21 @@ let memberCookie = "";
   });
   assert.equal(saveStatic.res.status, 200, saveStatic.text);
 
-  const staticPage = await call("/guide/");
-  assert.match(staticPage.text, />新手入门指南</, "栏目页主标题必须替换");
-  assert.match(staticPage.text, /爆品选品方法论/, "栏目页描述必须替换");
-  assert.match(staticPage.text, /Shopify 建站清单/, "栏目页 CTA 标题必须替换");
-  assert.match(staticPage.text, />进入会员</, "CTA 按钮文字必须替换");
-  assert.match(staticPage.text, /href="\/member\/"/, "修改 CTA 文字不得改变 href");
-  assert.match(staticPage.text, />会员登录入口</, "会员登录页标题必须替换");
-  assert.match(staticPage.text, /placeholder="请输入 12 位访问码"/, "输入框 placeholder 必须替换");
-  pass("静态栏目页与会员登录页文案替换（含 placeholder 属性）");
+  // 各栏目页动态渲染，仅展示自身栏目文案
+  const guidePage = await call("/guide/");
+  assert.match(guidePage.text, />新手入门指南</, "栏目页主标题必须替换");
+  const productsPage = await call("/products/");
+  assert.match(productsPage.text, /爆品选品方法论/, "选品栏目描述必须替换");
+  const buildPage = await call("/build/");
+  assert.match(buildPage.text, /Shopify 建站清单/, "建站栏目 CTA 标题必须替换");
+  const marketingPage = await call("/marketing/");
+  assert.match(marketingPage.text, /进入会员/, "营销栏目 CTA 按钮文字必须替换");
+  assert.match(marketingPage.text, /href="\/member\/"/, "修改 CTA 文字不得改变 href");
+
+  const memberLogin = await call("/member/");
+  assert.match(memberLogin.text, />会员登录入口</, "会员登录页标题必须替换");
+  assert.match(memberLogin.text, /placeholder="请输入 12 位访问码"/, "输入框 placeholder 必须替换");
+  pass("各栏目页与会员登录页文案替换（含 placeholder 属性）");
 
   // 案例列表页
   const caseSave = await call("/api/admin/copy", {

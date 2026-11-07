@@ -456,9 +456,10 @@ function toMemberDto(row) {
 }
 
 async function nextMemberCode(db) {
+  // 兼容历史 CH 前缀与新 CG 前缀：去掉前缀后的数字取最大值 +1，统一用 CG + 4 位
   const row = await db.prepare("SELECT MAX(CAST(SUBSTR(member_code, 3) AS INTEGER)) AS max_no FROM members").first();
   const next = (row && row.max_no ? row.max_no : 0) + 1;
-  return `CH${String(next).padStart(3, "0")}`;
+  return `CG${String(next).padStart(4, "0")}`;
 }
 
 async function createMemberWithCode(db, input, pepper) {
@@ -557,8 +558,102 @@ function escapeHtml(value) {
 
 function safeHref(url) {
   const u = String(url || "").trim();
-  if (/^https?:\/\//i.test(u) || u.startsWith("/")) return u;
+  if (/^https?:\/\//i.test(u) || u.startsWith("/") || /^mailto:/i.test(u)) return u;
   return "";
+}
+
+/**
+ * 富文本 HTML 白名单过滤：只允许排版相关标签与属性，阻止脚本注入。
+ * - 标签白名单：p/div/br/span/h2/h3/h4/ul/ol/li/blockquote/a/strong/em/b/i/figure/figcaption/img
+ * - 属性白名单：a.href(限 http/https/mailto/站内)、img.src(限 /media/ 或站内)、alt/title、
+ *   style 仅允许 color / background-color
+ * - 移除所有 on* 事件、script/iframe/form/object/embed、javascript: 协议
+ */
+const SANITIZE_ALLOWED_TAGS = new Set([
+  "p","div","span","br","h2","h3","h4","h5","h6",
+  "ul","ol","li","blockquote","a","strong","em","b","i","u","s",
+  "figure","figcaption","img","hr","pre","code",
+]);
+
+function sanitizeHtml(input) {
+  let html = String(input || "");
+  if (!html) return "";
+  // 去除危险协议与事件属性
+  html = html.replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  html = html.replace(/\s(href|src|action|formaction)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, (m, attr, val) => {
+    const raw = val.replace(/^["']|["']$/g, "");
+    if (/^javascript:/i.test(raw) || /^data:/i.test(raw)) return "";
+    return m;
+  });
+  // 用正则剥离不在白名单内的标签（保留其内部文本）
+  html = html.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)([^>]*)>/g, (full, tag, attrs) => {
+    const t = tag.toLowerCase();
+    if (!SANITIZE_ALLOWED_TAGS.has(t)) return ""; // 剥除标签，保留文本
+    // 清理标签内危险属性，仅保留安全属性
+    let cleaned = "";
+    const attrRe = /([a-zA-Z-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/g;
+    let am;
+    while ((am = attrRe.exec(attrs)) !== null) {
+      const an = am[1].toLowerCase();
+      const av = am[2].replace(/^["']|["']$/g, "");
+      if (an === "href") {
+        const safe = safeHref(av);
+        if (safe) cleaned += ` href="${escapeHtml(safe)}"`;
+      } else if (an === "src") {
+        if (/^\/media\//.test(av) || /^https?:\/\//i.test(av)) cleaned += ` src="${escapeHtml(av)}"`;
+      } else if (an === "alt" || an === "title") {
+        cleaned += ` ${an}="${escapeHtml(av)}"`;
+      } else if (an === "style") {
+        const allowed = av.split(";").map((s) => s.trim()).filter((s) => {
+          const k = s.split(":")[0].trim().toLowerCase();
+          return k === "color" || k === "background-color";
+        });
+        if (allowed.length) cleaned += ` style="${escapeHtml(allowed.join("; "))}"`;
+      }
+    }
+    return full.startsWith("</") ? `</${t}>` : `<${t}${cleaned}>`;
+  });
+  // 兜底：移除任何残留的 script/iframe 等块
+  html = html.replace(/<\s*(script|iframe|object|embed|form|input|button|textarea|select|link|meta|style)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "");
+  return html;
+}
+
+function extractTocFromHtml(html) {
+  const items = [];
+  const used = new Set();
+  const re = /<(h[234])[^>]*>([\s\S]*?)<\/\1>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const level = parseInt(m[1].slice(1), 10);
+    const text = m[2].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    let id = text.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!id) id = "heading";
+    let finalId = id;
+    let i = 1;
+    while (used.has(finalId)) {
+      finalId = `${id}-${++i}`;
+    }
+    used.add(finalId);
+    items.push({ id: finalId, text, level });
+  }
+  return items;
+}
+
+function renderBodyWithAnchors(html) {
+  // 为 HTML 正文中的标题注入 id，便于目录跳转
+  const used = new Set();
+  return html.replace(/<(h[234])([^>]*)>([\s\S]*?)<\/\1>/gi, (full, tag, attrs, inner) => {
+    const text = inner.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    let id = text.toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!id) id = "heading";
+    let finalId = id;
+    let i = 1;
+    while (used.has(finalId)) finalId = `${id}-${++i}`;
+    used.add(finalId);
+    if (/\bid=/.test(attrs)) return full;
+    return `<${tag}${attrs} id="${finalId}">${inner}</${tag}>`;
+  });
 }
 
 function plainText(value) {
@@ -731,6 +826,15 @@ function renderMarkdown(source) {
   }
 
   return { html: html.join("\n"), toc };
+}
+
+/** 统一渲染正文：HTML 富文本直接用（已在入库时过滤），Markdown 走 renderMarkdown */
+function renderBody(body, format) {
+  if (format === "html") {
+    const html = renderBodyWithAnchors(sanitizeHtml(body));
+    return { html, toc: extractTocFromHtml(html) };
+  }
+  return renderMarkdown(body || "");
 }
 
 function formatDate(value) {
@@ -1192,7 +1296,7 @@ function memberShell({ title, active, member, body }) {
             <div class="m-identity-code">${escapeHtml(member.member_code)}</div>
           </div>
         </div>
-        <span class="m-status"><i aria-hidden="true"></i>${statusText} · 永久会员</span>
+        <span class="m-status"><i aria-hidden="true"></i>${statusText} · VIP会员</span>
         <div class="m-side-actions">
           <button class="m-linkbtn" type="button" data-logout>退出登录</button>
           <a class="m-linkbtn" href="/" data-copy="member.nav.back">返回公开站</a>
@@ -1281,7 +1385,42 @@ ${body}
 </main>
 <footer class="site-footer">
   <div class="container">
-    <div class="footer-bottom" style="margin-top:0;padding-top:28px;border-top:1px solid var(--line);">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="/" aria-label="独立站春哥 首页">
+          <span class="brand-mark">春</span>
+          <span class="brand-text">
+            <span class="brand-name">独立站春哥</span>
+            <span class="brand-sub">CHUNGE · DTC</span>
+          </span>
+        </a>
+        <p>帮助独立站新手从选品、建站、营销到实现第一单。不贩卖焦虑，只讲能落地的实操。</p>
+      </div>
+      <div class="footer-col">
+        <h4>免费知识库</h4>
+        <ul>
+          <li><a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span></a></li>
+          <li><a href="/products/"><span data-copy="public.nav.products">选品知识库</span></a></li>
+          <li><a href="/build/"><span data-copy="public.nav.build">建站教程</span></a></li>
+          <li><a href="/marketing/"><span data-copy="public.nav.marketing">营销知识</span></a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>会员服务</h4>
+        <ul>
+          <li><a href="/member/"><span data-copy="public.nav.member">会员中心</span></a></li>
+          <li><a href="/#benefits">会员权益</a></li>
+          <li><a href="/cases/"><span data-copy="public.nav.cases">学员案例</span></a></li>
+          <li><a href="/#knowledge">免费知识库</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>联系与说明</h4>
+        <p class="footer-contact">带教咨询微信<br><b>ch022427</b></p>
+        <p class="footer-contact">会员开通 / 内容合作<br>请通过微信联系</p>
+      </div>
+    </div>
+    <div class="footer-bottom">
       <span>© 2026 独立站春哥（亿级操盘手）｜带教咨询微信：ch022427</span>
       <span class="mono">CHUNGE · MEMBER CENTER V1</span>
     </div>
@@ -1555,9 +1694,36 @@ function adminContentBody() {
     <option value="archived">已下架</option>
   </select>
   <button class="btn btn-ghost btn-sm" type="button" id="content-search-btn">筛选</button>
+  <label class="a-hint" style="display:inline-flex;align-items:center;gap:4px;"><input type="checkbox" id="content-group-toggle"> 按分类分组</label>
   <div class="a-toolbar-spacer"></div>
-  <span class="a-hint">支持标题、段落、列表、表格、图片与代码块</span>
+  <span class="a-hint">支持 Markdown / 富文本，章节类型可分多章</span>
 </div>
+
+<details class="a-cat-panel" id="category-panel">
+  <summary>课程分类管理（点击展开）</summary>
+  <div class="a-cat-toolbar">
+    <input class="a-input" id="cat-name" placeholder="分类名称" maxlength="60">
+    <input class="a-input" id="cat-slug" placeholder="标识 slug" maxlength="60">
+    <select class="a-input" id="cat-type">
+      <option value="course">课程分类</option>
+      <option value="resource">资料分类</option>
+      <option value="tool">工具分类</option>
+    </select>
+    <input class="a-input" id="cat-sort" type="number" min="0" max="9999" value="0" placeholder="排序">
+    <select class="a-input" id="cat-status">
+      <option value="active">启用</option>
+      <option value="disabled">禁用</option>
+    </select>
+    <button class="btn btn-primary btn-sm" type="button" id="cat-create">添加分类</button>
+  </div>
+  <div class="a-table-wrap">
+    <table class="a-table">
+      <thead><tr><th>名称</th><th>标识</th><th>类型</th><th>状态</th><th>排序</th><th class="a-right">操作</th></tr></thead>
+      <tbody id="category-rows"><tr><td colspan="6" class="a-empty">加载中…</td></tr></tbody>
+    </table>
+  </div>
+</details>
+
 <div class="a-table-wrap">
   <table class="a-table">
     <thead>
@@ -1579,13 +1745,56 @@ function adminContentBody() {
       <label class="a-field"><span>标题 *</span><input name="title" maxlength="120" required placeholder="例如：90 天从 0 到第一单"></label>
       <label class="a-field"><span>访问路径（slug）*</span><input name="slug" maxlength="80" required placeholder="例如：90-day-roadmap"></label>
       <label class="a-field"><span>课程分类</span><select name="category_id" id="content-category"></select></label>
+      <label class="a-field"><span>导航栏目</span><select name="nav_category"><option value="">不归属栏目</option><option value="guide">独立站入门</option><option value="products">选品知识库</option><option value="build">建站教程</option><option value="marketing">营销知识</option></select></label>
       <label class="a-field"><span>内容类型</span><select name="content_type"><option value="article">图文课程</option><option value="chapter">章节</option></select></label>
       <label class="a-field"><span>权限</span><select name="access_level"><option value="member">会员专属</option><option value="free">免费公开</option></select></label>
       <label class="a-field"><span>状态</span><select name="status"><option value="draft">草稿</option><option value="published">发布</option><option value="archived">下架</option></select></label>
       <label class="a-field"><span>排序（越小越靠前）</span><input name="sort_order" type="number" min="0" max="9999" value="0"></label>
     </div>
+    <label class="a-field"><span>封面图 URL</span><input name="cover_image" maxlength="300" placeholder="/media/xxx.jpg 或 https://…，可选"></label>
     <label class="a-field"><span>摘要（列表与搜索结果用）</span><textarea name="excerpt" rows="2" maxlength="300" placeholder="一句话说明这篇内容解决什么问题"></textarea></label>
-    <label class="a-field"><span>正文（Markdown）*</span><textarea name="body" rows="16" class="a-code-input" placeholder="## 小节标题&#10;&#10;正文段落…"></textarea></label>
+    <div class="a-field">
+      <span>正文格式</span>
+      <div class="a-seg" id="content-format-seg">
+        <button type="button" class="a-seg-btn is-active" data-format="markdown">Markdown</button>
+        <button type="button" class="a-seg-btn" data-format="html">富文本</button>
+      </div>
+    </div>
+    <div id="content-rt-toolbar-wrap" hidden>
+      <div class="a-rt-toolbar" id="content-rt-toolbar">
+        <button type="button" data-cmd="formatBlock" data-val="h2" title="二级标题">H2</button>
+        <button type="button" data-cmd="formatBlock" data-val="h3" title="三级标题">H3</button>
+        <button type="button" data-cmd="formatBlock" data-val="h4" title="四级标题">H4</button>
+        <button type="button" data-cmd="formatBlock" data-val="p" title="正文段落">P</button>
+        <button type="button" data-cmd="insertUnorderedList" title="无序列表">• 列表</button>
+        <button type="button" data-cmd="insertOrderedList" title="有序列表">1. 列表</button>
+        <button type="button" data-cmd="formatBlock" data-val="blockquote" title="引用">❝</button>
+        <button type="button" data-cmd="bold" title="加粗"><b>B</b></button>
+        <button type="button" data-cmd="italic" title="斜体"><i>I</i></button>
+        <button type="button" data-cmd="underline" title="下划线"><u>U</u></button>
+        <button type="button" data-cmd="createLink" title="插入链接">🔗</button>
+        <button type="button" data-cmd="foreColor" data-val="#e65100" title="橙色文字">A</button>
+        <button type="button" data-cmd="hiliteColor" data-val="#fff59d" title="高亮">🖍</button>
+        <button type="button" data-cmd="removeFormat" title="清除格式">⌫</button>
+        <button type="button" data-cmd="undo" title="撤销">↶</button>
+        <button type="button" data-cmd="redo" title="重做">↷</button>
+      </div>
+    </div>
+    <div id="content-body-markdown">
+      <label class="a-field"><span>正文（Markdown）*</span><textarea name="body" rows="16" class="a-code-input" placeholder="## 小节标题&#10;&#10;正文段落…"></textarea></label>
+    </div>
+    <div id="content-body-html" hidden>
+      <label class="a-field"><span>正文（富文本）*</span>
+        <div id="content-rt" class="a-rt-editor" contenteditable="true"></div>
+      </label>
+    </div>
+    <div id="content-chapters" hidden>
+      <div class="a-field">
+        <span>章节目录</span>
+        <button type="button" class="btn btn-ghost btn-sm" id="chapter-add">+ 添加章节</button>
+      </div>
+      <div id="chapter-list"></div>
+    </div>
     <div class="a-media-bar">
       <span>正文配图</span>
       <input type="file" id="content-image" accept="image/png,image/jpeg,image/webp,image/gif">
@@ -1713,7 +1922,43 @@ function adminCasesBody() {
       <span class="a-hint" id="case-cover-hint">支持 JPG / PNG / WebP / GIF，5 MB 以内。</span>
     </div>
     <label class="a-field"><span>封面地址</span><input name="cover_image" id="case-cover-url" maxlength="300" placeholder="上传后自动填入，也可手动填写 /media/… 地址"></label>
-    <label class="a-field"><span>正文（Markdown）*</span><textarea name="body" rows="14" class="a-code-input" placeholder="## 背景&#10;&#10;案例正文…"></textarea></label>
+    <div class="a-field">
+      <span>正文格式</span>
+      <div class="a-seg" id="case-format-seg">
+        <button type="button" class="a-seg-btn is-active" data-format="markdown">Markdown</button>
+        <button type="button" class="a-seg-btn" data-format="html">富文本</button>
+      </div>
+    </div>
+    <div id="case-body-markdown">
+      <label class="a-field"><span>正文（Markdown）*</span><textarea name="body" rows="14" class="a-code-input" placeholder="## 背景&#10;&#10;案例正文…"></textarea></label>
+    </div>
+    <div id="case-body-html" hidden>
+      <div class="a-rt-toolbar" id="case-rt-toolbar">
+        <button type="button" data-cmd="formatBlock" data-val="h2">H2</button>
+        <button type="button" data-cmd="formatBlock" data-val="h3">H3</button>
+        <button type="button" data-cmd="formatBlock" data-val="h4">H4</button>
+        <button type="button" data-cmd="formatBlock" data-val="p">P</button>
+        <button type="button" data-cmd="insertUnorderedList">• 列表</button>
+        <button type="button" data-cmd="insertOrderedList">1. 列表</button>
+        <button type="button" data-cmd="formatBlock" data-val="blockquote">❝</button>
+        <button type="button" data-cmd="bold"><b>B</b></button>
+        <button type="button" data-cmd="italic"><i>I</i></button>
+        <button type="button" data-cmd="underline"><u>U</u></button>
+        <button type="button" data-cmd="createLink">🔗</button>
+        <button type="button" data-cmd="foreColor" data-val="#e65100">A</button>
+        <button type="button" data-cmd="hiliteColor" data-val="#fff59d">🖍</button>
+        <button type="button" data-cmd="removeFormat">⌫</button>
+        <button type="button" data-cmd="undo">↶</button>
+        <button type="button" data-cmd="redo">↷</button>
+      </div>
+      <div id="case-rt" class="a-rt-editor" contenteditable="true"></div>
+    </div>
+    <div class="a-media-bar">
+      <span>正文配图</span>
+      <input type="file" id="case-body-image" accept="image/png,image/jpeg,image/webp,image/gif">
+      <button class="btn btn-ghost btn-sm" type="button" id="case-body-image-upload">上传并插入</button>
+      <span class="a-hint" id="case-body-image-hint">支持 JPG / PNG / WebP / GIF，5 MB 以内。</span>
+    </div>
     <p class="a-form-alert" id="case-alert" hidden></p>
     <div class="a-dialog-foot">
       <span class="a-hint" id="case-meta"></span>
@@ -2169,7 +2414,7 @@ async function renderMemberHome(env, member) {
   <p class="m-hero-lead" data-copy="member.home.welcome.description">这里是你的独立站实战工作台：课程、工具、SOP 与资料都在同一处。建议按模块顺序学习，遇到问题随时微信联系。</p>
   <div class="m-hero-meta">
     <span>会员编号 <b>${escapeHtml(member.member_code)}</b></span>
-    <span class="m-tag-ok">正常 · 永久会员</span>
+    <span class="m-tag-ok">正常 · VIP会员</span>
     <span>已发布课程 <b>${items.length}</b> 篇</span>
   </div>
   <div class="m-hero-actions">
@@ -2344,7 +2589,7 @@ async function renderCourseDetail(env, member, slug) {
   const prev = currentIndex > 0 ? siblings[currentIndex - 1] : null;
   const next = currentIndex >= 0 && currentIndex < siblings.length - 1 ? siblings[currentIndex + 1] : null;
 
-  const rendered = renderMarkdown(row.body);
+  const rendered = renderBody(row.body, row.content_format);
   const attachment = await env.DB.prepare(
     "SELECT file_name, file_size, file_type FROM content_files WHERE content_id = ?"
   )
@@ -2363,12 +2608,60 @@ async function renderCourseDetail(env, member, slug) {
     : "";
   const tocHtml = rendered.toc.length >= 2
     ? `<div class="m-aside-card"><h3>本篇目录</h3><div class="m-toc">${rendered.toc
-        .filter((t) => t.level === 2)
-        .map((t) => `<a class="lv2" href="#${t.id}">${escapeHtml(t.text)}</a>`)
+        .map((t) => `<a class="lv${t.level}" href="#${t.id}">${escapeHtml(t.text)}</a>`)
         .join("")}</div></div>`
     : "";
 
-  const chaptersHtml = siblings.length
+  // 章节类型：读取 content_chapters；若无章节记录，用正文兜底为单章节
+  const isChapter = row.content_type === "chapter";
+  let realChapters = [];
+  if (isChapter) {
+    realChapters = ((await env.DB.prepare(
+      "SELECT id, title, body, sort_order FROM content_chapters WHERE content_id = ? ORDER BY sort_order, id"
+    ).bind(row.id).all()).results) || [];
+    if (realChapters.length === 0) {
+      realChapters = [{ id: 0, title: row.title, body: row.body }];
+    }
+  }
+
+  const chapterNavHtml = isChapter
+    ? `<div class="m-aside-card"><h3>章节目录</h3><div class="m-chapters" id="chapter-nav">${realChapters
+        .map(
+          (c, i) =>
+            `<a class="${i === 0 ? "is-current" : ""}" href="#ch-${i}" data-ch="${i}"><i>${String(i + 1).padStart(2, "0")}</i>${escapeHtml(c.title)}</a>`
+        )
+        .join("")}</div></div>`
+    : "";
+
+  const chapterPanelsHtml = isChapter
+    ? realChapters
+        .map(
+          (c, i) =>
+            `<section class="chapter-panel" id="ch-${i}" data-ch="${i}" style="${i === 0 ? "" : "display:none;"}"><h2>${escapeHtml(c.title)}</h2><article class="prose m-article-body">${renderBody(c.body, row.content_format).html}</article></section>`
+        )
+        .join("")
+    : `<article class="prose m-article-body">${rendered.html}</article>`;
+
+  const chapterScript = isChapter
+    ? `<script>
+(function(){
+  var nav=document.getElementById('chapter-nav'); if(!nav) return;
+  var panels=document.querySelectorAll('.chapter-panel');
+  function show(idx){
+    panels.forEach(function(p){ p.style.display = Number(p.dataset.ch)===idx?'':'none'; });
+    nav.querySelectorAll('a').forEach(function(a){ a.classList.toggle('is-current', Number(a.dataset.ch)===idx); });
+    var target=document.getElementById('ch-'+idx); if(target) target.scrollIntoView({behavior:'smooth', block:'start'});
+  }
+  nav.addEventListener('click', function(e){ var a=e.target.closest('a[data-ch]'); if(a){ e.preventDefault(); show(Number(a.dataset.ch)); } });
+  var prev=document.getElementById('ch-prev'), next=document.getElementById('ch-next');
+  function cur(){ var n=0; panels.forEach(function(p,i){ if(p.style.display!=='none') n=i; }); return n; }
+  if(prev) prev.addEventListener('click', function(){ var n=cur(); if(n>0) show(n-1); });
+  if(next) next.addEventListener('click', function(){ var n=cur(); if(n<panels.length-1) show(n+1); });
+})();
+</script>`
+    : "";
+
+  const siblingsHtml = !isChapter && siblings.length
     ? `<div class="m-aside-card"><h3>${escapeHtml(row.category_name || "本模块")}</h3><div class="m-chapters">${siblings
         .map(
           (s, i) =>
@@ -2378,6 +2671,10 @@ async function renderCourseDetail(env, member, slug) {
         )
         .join("")}</div></div>`
     : "";
+
+  const chapterFoot = isChapter
+    ? `<div class="m-article-foot"><span><button id="ch-prev" class="btn btn-ghost btn-sm" type="button">← 上一章</button></span><span><button id="ch-next" class="btn btn-ghost btn-sm" type="button">下一章 →</button></span></div>`
+    : `<div class="m-article-foot"><span>${prev ? `<a href="/member/app/courses/${escapeHtml(prev.slug)}">← ${escapeHtml(prev.title)}</a>` : "<span>已经是第一篇</span>"}</span><span>${next ? `<a href="/member/app/courses/${escapeHtml(next.slug)}">${escapeHtml(next.title)} →</a>` : "<span>本模块已全部读完</span>"}</span></div>`;
 
   const body = `
 <div class="m-article-layout">
@@ -2399,16 +2696,14 @@ async function renderCourseDetail(env, member, slug) {
       </div>
     </div>
     ${attachmentHtml}
-    <article class="prose m-article-body">${rendered.html}</article>
-    <div class="m-article-foot">
-      <span>${prev ? `<a href="/member/app/courses/${escapeHtml(prev.slug)}">← ${escapeHtml(prev.title)}</a>` : "<span>已经是第一篇</span>"}</span>
-      <span>${next ? `<a href="/member/app/courses/${escapeHtml(next.slug)}">${escapeHtml(next.title)} →</a>` : "<span>本模块已全部读完</span>"}</span>
-    </div>
+    ${chapterPanelsHtml}
+    ${chapterFoot}
     <p style="margin-top:22px;"><a class="btn btn-ghost btn-sm" href="/member/app/courses/"><span data-copy="member.courses.detail.back">返回课程列表</span></a></p>
   </div>
   <aside class="m-aside">
     ${tocHtml}
-    ${chaptersHtml}
+    ${chapterNavHtml}
+    ${siblingsHtml}
     <div class="m-aside-card">
       <h3 data-copy="member.courses.detail.cta.title">需要帮助</h3>
       <p data-copy="member.courses.detail.cta.description" style="margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--muted);">实操卡住了，直接微信联系带教，说明你卡在哪一步。</p>
@@ -2416,7 +2711,7 @@ async function renderCourseDetail(env, member, slug) {
       <button class="m-linkbtn" type="button" data-copy-text="ch022427"><span data-copy="member.courses.detail.cta.button">复制微信号</span></button>
     </div>
   </aside>
-</div>`;
+</div>${chapterScript}`;
 
   return { status: 200, html: memberShell({ title: row.title, active: "courses", member, body }) };
 }
@@ -2759,7 +3054,7 @@ async function handlePublicLibrary(request, env, ctx, url) {
     return Response.redirect(`${url.origin}/member/?next=${encodeURIComponent(`/member/app/courses/${row.slug}`)}`, 302);
   }
 
-  const rendered = renderMarkdown(row.body);
+  const rendered = renderBody(row.body, row.content_format);
   // 免费课程附件（PDF 等）与正文同权限：公开展示、免登录下载
   const attachment = await env.DB.prepare(
     "SELECT file_name, file_size, file_type FROM content_files WHERE content_id = ?"
@@ -2779,9 +3074,44 @@ async function handlePublicLibrary(request, env, ctx, url) {
     : "";
   const tocHtml = rendered.toc.length >= 2
     ? `<div class="m-aside-card"><h3>本篇目录</h3><div class="m-toc">${rendered.toc
-        .filter((t) => t.level === 2)
-        .map((t) => `<a class="lv2" href="#${t.id}">${escapeHtml(t.text)}</a>`)
+        .map((t) => `<a class="lv${t.level}" href="#${t.id}">${escapeHtml(t.text)}</a>`)
         .join("")}</div></div>`
+    : "";
+
+  const isChapter = row.content_type === "chapter";
+  let realChapters = [];
+  if (isChapter) {
+    realChapters = ((await env.DB.prepare(
+      "SELECT id, title, body, sort_order FROM content_chapters WHERE content_id = ? ORDER BY sort_order, id"
+    ).bind(row.id).all()).results) || [];
+    if (realChapters.length === 0) {
+      realChapters = [{ id: 0, title: row.title, body: row.body }];
+    }
+  }
+  const chapterNavHtml = isChapter
+    ? `<div class="m-aside-card"><h3>章节目录</h3><div class="m-chapters" id="chapter-nav">${realChapters
+        .map((c, i) => `<a class="${i === 0 ? "is-current" : ""}" href="#ch-${i}" data-ch="${i}"><i>${String(i + 1).padStart(2, "0")}</i>${escapeHtml(c.title)}</a>`)
+        .join("")}</div></div>`
+    : "";
+  const chapterPanelsHtml = isChapter
+    ? realChapters.map((c, i) => `<section class="chapter-panel" id="ch-${i}" data-ch="${i}" style="${i === 0 ? "" : "display:none;"}"><h2>${escapeHtml(c.title)}</h2><article class="prose m-article-body">${renderBody(c.body, row.content_format).html}</article></section>`).join("")
+    : `<article class="prose m-article-body">${rendered.html}</article>`;
+  const chapterFoot = isChapter
+    ? `<div class="m-article-foot"><span><button id="ch-prev" class="btn btn-ghost btn-sm" type="button">← 上一章</button></span><span><button id="ch-next" class="btn btn-ghost btn-sm" type="button">下一章 →</button></span></div>`
+    : "";
+  const chapterScript = isChapter
+    ? `<script>
+(function(){
+  var nav=document.getElementById('chapter-nav'); if(!nav) return;
+  var panels=document.querySelectorAll('.chapter-panel');
+  function show(idx){ panels.forEach(function(p){ p.style.display=Number(p.dataset.ch)===idx?'':'none'; }); nav.querySelectorAll('a').forEach(function(a){ a.classList.toggle('is-current',Number(a.dataset.ch)===idx); }); var t=document.getElementById('ch-'+idx); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); }
+  nav.addEventListener('click',function(e){ var a=e.target.closest('a[data-ch]'); if(a){ e.preventDefault(); show(Number(a.dataset.ch)); } });
+  var pv=document.getElementById('ch-prev'),nx=document.getElementById('ch-next');
+  function cur(){ var n=0; panels.forEach(function(p,i){ if(p.style.display!=='none') n=i; }); return n; }
+  if(pv) pv.addEventListener('click',function(){ var n=cur(); if(n>0) show(n-1); });
+  if(nx) nx.addEventListener('click',function(){ var n=cur(); if(n<panels.length-1) show(n+1); });
+})();
+</script>`
     : "";
 
   const body = `
@@ -2802,7 +3132,8 @@ async function handlePublicLibrary(request, env, ctx, url) {
       </div>
     </div>
     ${attachmentHtml}
-    <article class="prose m-article-body">${rendered.html}</article>
+    ${chapterPanelsHtml}
+    ${chapterFoot}
     <div class="m-note" style="margin-top:40px;">
       <span class="m-note-ico" aria-hidden="true">i</span>
       <div>这篇内容来自公开知识库。想系统学完 10 个模块，并获得工具与资料，可以了解会员权益：<a href="/member/" style="color:var(--orange-deep);">进入会员中心</a>。</div>
@@ -2810,13 +3141,14 @@ async function handlePublicLibrary(request, env, ctx, url) {
   </div>
   <aside class="m-aside">
     ${tocHtml}
+    ${chapterNavHtml}
     <div class="m-aside-card">
       <h3>会员专享</h3>
       <p style="margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--muted);">体系课程、网页工具与可下载资料，凭专属访问码进入。</p>
       <a class="btn btn-primary btn-sm" style="margin-top:14px;" href="/member/">了解会员</a>
     </div>
   </aside>
-</div>`;
+</div>${chapterScript}`;
 
   return new Response(publicShell({ title: row.title, description: row.excerpt || row.title, body }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
@@ -2877,6 +3209,86 @@ async function handlePublicCourseList(request, env) {
 </div>`;
 
   return new Response(publicShell({ title: "免费课程", description: "独立站春哥免费课程，无需登录即可阅读。", body }), {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
+  });
+}
+
+/* -------------- 公开栏目页（导航分类动态课程列表） -------------- */
+
+const NAV_SECTIONS = {
+  guide: { prefix: "public.guide.", defaultTitle: "独立站入门", defaultDesc: "从零理解独立站：流量、转化、交付三件事，先建立全局地图，再动手。" },
+  products: { prefix: "public.products.", defaultTitle: "选品知识库", defaultDesc: "选品不是找爆款，而是找到能稳定交付、能复购、能投广告的产品。" },
+  build: { prefix: "public.tutorials.", defaultTitle: "建站教程", defaultDesc: "建站的目标不是好看，而是让陌生人敢下单。从域名、收款到物流和信任页面，按真实上线顺序排列。" },
+  marketing: { prefix: "public.marketing.", defaultTitle: "营销知识", defaultDesc: "独立站的流量只有三条路：付费广告、社媒内容、自然搜索。先把一条跑通，再考虑放大。" },
+};
+
+/**
+ * 公开栏目页：根据 nav_category 动态读取「已发布 + 免费公开」课程。
+ * 会员课程不会出现在公开栏目，必须登录会员中心才能访问，避免绕过鉴权。
+ */
+async function handleNavSection(request, env, navKey) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return fail(405, "method_not_allowed", "不支持该请求方法。");
+  }
+  const cfg = NAV_SECTIONS[navKey];
+  if (!cfg) return fail(404, "not_found", "栏目不存在。");
+
+  const copy = await loadCopy(env);
+  const t = (k, d) => copy[cfg.prefix + k] || d;
+  const uncategorizedLabel = copy["public.courses.uncategorized"] || "未分类";
+
+  const rows = (
+    await env.DB.prepare(
+      `SELECT c.id, c.slug, c.title, c.excerpt, c.access_level, c.content_type,
+              c.sort_order, c.published_at, c.created_at, cat.name AS category_name
+         FROM contents c LEFT JOIN content_categories cat ON cat.id = c.category_id
+        WHERE c.status = 'published' AND c.access_level = 'free' AND c.nav_category = ?
+        ORDER BY c.sort_order ASC, COALESCE(c.published_at, c.created_at) DESC, c.id DESC`
+    )
+      .bind(navKey)
+      .all()
+  ).results || [];
+
+  const listHtml = rows.length
+    ? rows
+        .map((item, index) => {
+          const date = shortDate(item.published_at || item.created_at);
+          const typeTag = item.content_type === "chapter" ? `<span class="m-tag">章节</span>` : "";
+          return `<div class="m-row">
+  <span class="m-row-num">${String(index + 1).padStart(2, "0")}</span>
+  <div class="m-row-main">
+    <a class="m-row-title" href="/library/${escapeHtml(item.slug)}/">${escapeHtml(item.title)} <span class="m-tag free">免费</span>${typeTag}</a>
+    ${item.excerpt ? `<p class="m-row-desc">${escapeHtml(item.excerpt)}</p>` : ""}
+  </div>
+  <div class="m-row-meta"><span>${escapeHtml(item.category_name || uncategorizedLabel)}</span><span>${date}</span></div>
+  <span class="m-row-arrow" aria-hidden="true">→</span>
+</div>`;
+        })
+        .join("")
+    : `<p style="color:var(--muted);font-size:13px;">该栏目暂无免费公开课程，可以先去<a href="/courses/" style="color:var(--orange-deep);">免费课程</a>看看。</p>`;
+
+  const title = t("title", cfg.defaultTitle);
+  const desc = t("description", cfg.defaultDesc);
+  const sectionTitle = t("section.title", "全部文章");
+  const ctaTitle = t("cta.title", "");
+  const ctaDesc = t("cta.description", "");
+  const ctaButton = t("cta.button", "会员中心");
+
+  const body = `
+<div class="m-page-head">
+  <h1>${escapeHtml(title)}</h1>
+  <p>${escapeHtml(desc)}</p>
+</div>
+<div style="margin-top:24px;">
+  <h2 style="font-size:18px;margin:0 0 12px;">${escapeHtml(sectionTitle)}</h2>
+  ${listHtml}
+</div>
+${ctaTitle ? `<div class="m-note" style="margin-top:36px;">
+  <span class="m-note-ico" aria-hidden="true">i</span>
+  <div><strong>${escapeHtml(ctaTitle)}</strong>${ctaDesc ? `<br>${escapeHtml(ctaDesc)}` : ""}<br><a href="/member/" style="color:var(--orange-deep);">${escapeHtml(ctaButton)} →</a></div>
+</div>` : ""}`;
+
+  return new Response(publicShell({ title, description: desc, body }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
   });
 }
@@ -2953,12 +3365,17 @@ async function handlePublicCaseDetail(request, env, url) {
     );
   }
 
-  const rendered = renderMarkdown(row.body);
+  const rendered = renderBody(row.body, row.content_format);
   const coverHtml = row.cover_image
     ? `<img class="case-detail-cover" src="${escapeHtml(row.cover_image)}" alt="${escapeHtml(row.title)}">`
     : "";
   const linkHtml = row.external_link
     ? `<p style="margin-top:20px;"><a class="btn btn-ghost btn-sm" href="${escapeHtml(row.external_link)}" target="_blank" rel="noopener nofollow">查看相关链接 ↗</a></p>`
+    : "";
+  const tocHtml = rendered.toc.length >= 2
+    ? `<div class="m-aside-card"><h3>本篇目录</h3><div class="m-toc">${rendered.toc
+        .map((t) => `<a class="lv${t.level}" href="#${t.id}">${escapeHtml(t.text)}</a>`)
+        .join("")}</div></div>`
     : "";
 
   const body = `
@@ -2981,6 +3398,7 @@ async function handlePublicCaseDetail(request, env, url) {
     <p style="margin-top:28px;"><a class="btn btn-ghost btn-sm" href="/cases/"><span data-copy="public.cases.detail.back">返回学员案例</span></a></p>
   </div>
   <aside class="m-aside">
+    ${tocHtml}
     <div class="m-aside-card">
       <h3 data-copy="public.cases.detail.cta.title">会员专享</h3>
       <p data-copy="public.cases.detail.cta.description" style="margin-top:10px;font-size:12.5px;line-height:1.8;color:var(--muted);">体系课程、网页工具与可下载资料，凭专属访问码进入。</p>
@@ -3015,11 +3433,17 @@ function normalizeContentInput(body) {
   const accessLevel = ["free", "member"].includes(body.access_level) ? body.access_level : "member";
   const status = ["draft", "published", "archived"].includes(body.status) ? body.status : "draft";
   const contentType = ["article", "chapter"].includes(body.content_type) ? body.content_type : "article";
+  const navCategory = ["guide", "products", "build", "marketing"].includes(body.nav_category)
+    ? body.nav_category
+    : null;
+  const contentFormat = body.content_format === "html" ? "html" : "markdown";
 
-  const text = String(body.body || "");
-  if (text.length > 200000) {
-    return { error: "body_too_long", message: "正文超过 20 万字符，请拆分为多篇。" };
+  const rawBody = String(body.body || "");
+  if (rawBody.length > 500000) {
+    return { error: "body_too_long", message: "正文超过 50 万字符，请拆分为多篇。" };
   }
+  // 富文本必须经白名单过滤；Markdown 保持原样
+  const bodyText = contentFormat === "html" ? sanitizeHtml(rawBody) : rawBody;
 
   const excerpt = String(body.excerpt || "").trim().slice(0, 300);
   const categoryId = body.category_id === null || body.category_id === "" || body.category_id === undefined
@@ -3030,18 +3454,81 @@ function normalizeContentInput(body) {
   }
 
   const sortOrder = Math.max(0, Math.min(9999, asInt(body.sort_order, 0)));
+  const coverImage = String(body.cover_image || "").trim();
+  const safeCover = coverImage && (/^\/media\//.test(coverImage) || /^https?:\/\//i.test(coverImage))
+    ? coverImage
+    : coverImage
+      ? null
+      : "";
+
+  // 章节：仅 chapter 类型使用；每章校验标题、正文、排序
+  let chapters = [];
+  if (contentType === "chapter" && Array.isArray(body.chapters)) {
+    const rawChapters = body.chapters;
+    if (rawChapters.length === 0) {
+      return { error: "chapters_required", message: "章节类型至少需要一个章节。" };
+    }
+    if (rawChapters.length > 200) {
+      return { error: "too_many_chapters", message: "章节数量不能超过 200。" };
+    }
+    for (let i = 0; i < rawChapters.length; i++) {
+      const ch = rawChapters[i] || {};
+      const chTitle = String(ch.title || "").trim();
+      if (!chTitle || chTitle.length > 200) {
+        return { error: "invalid_chapter_title", message: `第 ${i + 1} 章标题不能为空且不超过 200 字。` };
+      }
+      const chBody = String(ch.body || "");
+      if (chBody.length > 500000) {
+        return { error: "chapter_body_too_long", message: `第 ${i + 1} 章正文超过 50 万字符。` };
+      }
+      const chBodySafe = contentFormat === "html" ? sanitizeHtml(chBody) : chBody;
+      const chSort = Math.max(0, Math.min(9999, asInt(ch.sort_order, i)));
+      chapters.push({ title: chTitle, body: chBodySafe, sortOrder: chSort });
+    }
+  }
 
   return {
     title,
     slug,
     categoryId,
     contentType,
+    navCategory,
+    contentFormat,
     excerpt,
-    body: text,
+    body: bodyText,
+    coverImage: safeCover,
     accessLevel,
     status,
     sortOrder,
+    chapters,
   };
+}
+
+function normalizeCategoryInput(body) {
+  const name = String(body.name || "").trim();
+  if (!name || name.length > 60) {
+    return { error: "invalid_name", message: "分类名称不能为空且不超过 60 字。" };
+  }
+  const slug = String(body.slug || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9-]{0,60}$/.test(slug)) {
+    return { error: "invalid_slug", message: "分类标识只能使用小写字母、数字和短横线。" };
+  }
+  const type = ["course", "resource", "tool"].includes(body.type) ? body.type : "course";
+  const status = ["active", "disabled"].includes(body.status) ? body.status : "active";
+  const description = String(body.description || "").trim().slice(0, 300);
+  const sortOrder = Math.max(0, Math.min(9999, asInt(body.sort_order, 0)));
+  return { name, slug, type, status, description, sortOrder };
+}
+
+async function replaceChapters(db, contentId, chapters) {
+  await db.prepare("DELETE FROM content_chapters WHERE content_id = ?").bind(contentId).run();
+  const now = nowIso();
+  const stmt = db.prepare(
+    "INSERT INTO content_chapters (content_id, title, body, sort_order, created_at) VALUES (?, ?, ?, ?, ?)"
+  );
+  for (const ch of chapters) {
+    await stmt.bind(contentId, ch.title, ch.body, ch.sortOrder, now).run();
+  }
 }
 
 function normalizeResourceInput(body) {
@@ -3140,10 +3627,12 @@ function normalizeCaseInput(body) {
     return { error: "invalid_link", message: "外部链接必须以 http:// 或 https:// 开头。" };
   }
 
-  const text = String(body.body || "");
-  if (text.length > 200000) {
-    return { error: "body_too_long", message: "正文超过 20 万字符，请拆分为多篇。" };
+  const contentFormat = body.content_format === "html" ? "html" : "markdown";
+  const rawBody = String(body.body || "");
+  if (rawBody.length > 500000) {
+    return { error: "body_too_long", message: "正文超过 50 万字符，请拆分为多篇。" };
   }
+  const bodyText = contentFormat === "html" ? sanitizeHtml(rawBody) : rawBody;
 
   const summary = String(body.summary || "").trim().slice(0, 300);
   const category = String(body.category || "").trim().slice(0, 60);
@@ -3162,7 +3651,8 @@ function normalizeCaseInput(body) {
     slug,
     coverImage,
     summary,
-    body: text,
+    body: bodyText,
+    contentFormat,
     category,
     externalLink,
     status,
@@ -4040,9 +4530,127 @@ async function handleApi(request, env, ctx, url) {
     const auth = await requireAdmin(request, env);
     if (auth.error) return auth.error;
     const rows = await env.DB.prepare(
-      "SELECT id, name, slug, type, description, sort_order FROM content_categories ORDER BY type, sort_order, id"
+      "SELECT id, name, slug, type, description, sort_order, status FROM content_categories ORDER BY type, sort_order, id"
     ).all();
     return json({ ok: true, items: rows.results || [] });
+  }
+
+  if (path === "/api/admin/categories" && method === "POST") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const body = await readJson(request);
+    if (!body) return fail(400, "invalid_body", "请求格式不正确。");
+    const input = normalizeCategoryInput(body);
+    if (input.error) return fail(400, input.error, input.message);
+
+    const exists = await env.DB.prepare("SELECT id FROM content_categories WHERE slug = ?").bind(input.slug).first();
+    if (exists) return fail(409, "slug_taken", "该分类标识已被占用。");
+
+    const now = nowIso();
+    const result = await env.DB.prepare(
+      "INSERT INTO content_categories (name, slug, type, description, sort_order, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+      .bind(input.name, input.slug, input.type, input.description, input.sortOrder, input.status, now)
+      .run();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "category.create",
+      detail: `${input.slug} ${input.name}`,
+    });
+
+    return json({ ok: true, item: { id: Number(result.meta.last_row_id), ...input } });
+  }
+
+  const categoryIdMatch = path.match(/^\/api\/admin\/categories\/(\d+)$/);
+  if (categoryIdMatch) {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const categoryId = parseInt(categoryIdMatch[1], 10);
+    const cat = await env.DB.prepare("SELECT * FROM content_categories WHERE id = ?").bind(categoryId).first();
+    if (!cat) return fail(404, "not_found", "分类不存在。");
+
+    if (method === "POST") {
+      const body = await readJson(request);
+      if (!body) return fail(400, "invalid_body", "请求格式不正确。");
+      const input = normalizeCategoryInput(body);
+      if (input.error) return fail(400, input.error, input.message);
+
+      const slugTaken = await env.DB.prepare("SELECT id FROM content_categories WHERE slug = ? AND id <> ?")
+        .bind(input.slug, categoryId)
+        .first();
+      if (slugTaken) return fail(409, "slug_taken", "该分类标识已被占用。");
+
+      await env.DB.prepare(
+        "UPDATE content_categories SET name = ?, slug = ?, type = ?, description = ?, sort_order = ?, status = ? WHERE id = ?"
+      )
+        .bind(input.name, input.slug, input.type, input.description, input.sortOrder, input.status, categoryId)
+        .run();
+
+      audit(ctx, env.DB, {
+        actorType: "admin",
+        actorId: auth.admin.id,
+        action: "category.update",
+        detail: `${input.slug}`,
+      });
+
+      return json({ ok: true, item: { id: categoryId, ...input } });
+    }
+
+    if (method === "DELETE") {
+      const countRow = await env.DB.prepare("SELECT COUNT(*) AS n FROM contents WHERE category_id = ?").bind(categoryId).first();
+      const count = Number(countRow && countRow.n) || 0;
+      if (count > 0) {
+        return fail(409, "category_in_use", `仍有 ${count} 篇课程关联该分类，请先迁移后再删除。`, { count });
+      }
+      await env.DB.prepare("DELETE FROM content_categories WHERE id = ?").bind(categoryId).run();
+      audit(ctx, env.DB, {
+        actorType: "admin",
+        actorId: auth.admin.id,
+        action: "category.delete",
+        detail: `${cat.slug}`,
+      });
+      return json({ ok: true });
+    }
+
+    return fail(405, "method_not_allowed", "不支持该请求方法。");
+  }
+
+  const categoryMigrateMatch = path.match(/^\/api\/admin\/categories\/(\d+)\/migrate$/);
+  if (categoryMigrateMatch && method === "POST") {
+    const auth = await requireAdmin(request, env);
+    if (auth.error) return auth.error;
+    const categoryId = parseInt(categoryMigrateMatch[1], 10);
+    const cat = await env.DB.prepare("SELECT id FROM content_categories WHERE id = ?").bind(categoryId).first();
+    if (!cat) return fail(404, "not_found", "分类不存在。");
+
+    const body = await readJson(request);
+    const targetId = body && (body.target_category_id === null || body.target_category_id === "" ? null : asInt(body.target_category_id, -1));
+    if (targetId !== null && targetId < 1) {
+      return fail(400, "invalid_target", "目标分类无效。");
+    }
+    if (targetId === categoryId) {
+      return fail(400, "same_target", "目标分类不能与当前分类相同。");
+    }
+    if (targetId !== null) {
+      const target = await env.DB.prepare("SELECT id FROM content_categories WHERE id = ?").bind(targetId).first();
+      if (!target) return fail(404, "target_not_found", "目标分类不存在。");
+    }
+
+    await env.DB.prepare("UPDATE contents SET category_id = ?, updated_at = ? WHERE category_id = ?")
+      .bind(targetId, nowIso(), categoryId)
+      .run();
+    await env.DB.prepare("DELETE FROM content_categories WHERE id = ?").bind(categoryId).run();
+
+    audit(ctx, env.DB, {
+      actorType: "admin",
+      actorId: auth.admin.id,
+      action: "category.migrate_delete",
+      detail: `${cat.slug} -> ${targetId || "未分类"}`,
+    });
+
+    return json({ ok: true });
   }
 
   /* ---------------- 课程内容管理 ---------------- */
@@ -4092,16 +4700,21 @@ async function handleApi(request, env, ctx, url) {
     const now = nowIso();
     const publishedAt = input.status === "published" ? now : null;
     const result = await env.DB.prepare(
-      `INSERT INTO contents (title, slug, category_id, content_type, excerpt, body, access_level, status, sort_order, created_at, updated_at, published_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO contents (title, slug, category_id, content_type, nav_category, content_format,
+                              excerpt, body, cover_image, access_level, status, sort_order,
+                              created_at, updated_at, published_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
         input.title,
         input.slug,
         input.categoryId,
         input.contentType,
+        input.navCategory,
+        input.contentFormat,
         input.excerpt,
         input.body,
+        input.coverImage || null,
         input.accessLevel,
         input.status,
         input.sortOrder,
@@ -4110,6 +4723,11 @@ async function handleApi(request, env, ctx, url) {
         publishedAt
       )
       .run();
+
+    const newId = Number(result.meta.last_row_id);
+    if (input.contentType === "chapter" && input.chapters.length > 0) {
+      await replaceChapters(env.DB, newId, input.chapters);
+    }
 
     audit(ctx, env.DB, {
       actorType: "admin",
@@ -4120,7 +4738,7 @@ async function handleApi(request, env, ctx, url) {
 
     return json({
       ok: true,
-      item: { id: Number(result.meta.last_row_id), slug: input.slug, title: input.title, status: input.status },
+      item: { id: newId, slug: input.slug, title: input.title, status: input.status },
     });
   }
 
@@ -4136,7 +4754,10 @@ async function handleApi(request, env, ctx, url) {
       const attachment = await env.DB.prepare("SELECT * FROM content_files WHERE content_id = ?")
         .bind(contentId)
         .first();
-      return json({ ok: true, item: { ...row, attachment: attachment || null } });
+      const chapters = row.content_type === "chapter"
+        ? (await env.DB.prepare("SELECT id, title, body, sort_order FROM content_chapters WHERE content_id = ? ORDER BY sort_order, id").bind(contentId).all()).results || []
+        : [];
+      return json({ ok: true, item: { ...row, attachment: attachment || null, chapters } });
     }
 
     if (method === "POST") {
@@ -4154,7 +4775,8 @@ async function handleApi(request, env, ctx, url) {
       const publishedAt =
         input.status === "published" ? row.published_at || now : row.published_at || null;
       await env.DB.prepare(
-        `UPDATE contents SET title = ?, slug = ?, category_id = ?, content_type = ?, excerpt = ?, body = ?,
+        `UPDATE contents SET title = ?, slug = ?, category_id = ?, content_type = ?, nav_category = ?,
+                            content_format = ?, excerpt = ?, body = ?, cover_image = ?,
                             access_level = ?, status = ?, sort_order = ?, updated_at = ?, published_at = ?
           WHERE id = ?`
       )
@@ -4163,8 +4785,11 @@ async function handleApi(request, env, ctx, url) {
           input.slug,
           input.categoryId,
           input.contentType,
+          input.navCategory,
+          input.contentFormat,
           input.excerpt,
           input.body,
+          input.coverImage || null,
           input.accessLevel,
           input.status,
           input.sortOrder,
@@ -4173,6 +4798,12 @@ async function handleApi(request, env, ctx, url) {
           contentId
         )
         .run();
+
+      // 章节：chapter 类型整体替换；切回 article 则清空章节
+      await env.DB.prepare("DELETE FROM content_chapters WHERE content_id = ?").bind(contentId).run();
+      if (input.contentType === "chapter" && input.chapters.length > 0) {
+        await replaceChapters(env.DB, contentId, input.chapters);
+      }
 
       audit(ctx, env.DB, {
         actorType: "admin",
@@ -4813,12 +5444,12 @@ async function handleApi(request, env, ctx, url) {
     const now = nowIso();
     const publishedAt = input.status === "published" ? input.publishedAt || now : input.publishedAt || null;
     const result = await env.DB.prepare(
-      `INSERT INTO cases (title, slug, cover_image, summary, body, category, external_link, status,
+      `INSERT INTO cases (title, slug, cover_image, summary, body, content_format, category, external_link, status,
                           sort_order, show_on_home, created_at, updated_at, published_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
-        input.title, input.slug, input.coverImage, input.summary, input.body, input.category,
+        input.title, input.slug, input.coverImage, input.summary, input.body, input.contentFormat, input.category,
         input.externalLink, input.status, input.sortOrder, input.showOnHome, now, now, publishedAt
       )
       .run();
@@ -4860,13 +5491,13 @@ async function handleApi(request, env, ctx, url) {
       const publishedAt =
         input.status === "published" ? input.publishedAt || row.published_at || now : input.publishedAt || null;
       await env.DB.prepare(
-        `UPDATE cases SET title = ?, slug = ?, cover_image = ?, summary = ?, body = ?, category = ?,
+        `UPDATE cases SET title = ?, slug = ?, cover_image = ?, summary = ?, body = ?, content_format = ?, category = ?,
                           external_link = ?, status = ?, sort_order = ?, show_on_home = ?,
                           updated_at = ?, published_at = ?
           WHERE id = ?`
       )
         .bind(
-          input.title, input.slug, input.coverImage, input.summary, input.body, input.category,
+          input.title, input.slug, input.coverImage, input.summary, input.body, input.contentFormat, input.category,
           input.externalLink, input.status, input.sortOrder, input.showOnHome, now, publishedAt, caseId
         )
         .run();
@@ -5201,6 +5832,20 @@ async function handleRequest(request, env, ctx, url) {
       }
       if (url.pathname === "/library" || url.pathname === "/library/") {
         return await handlePublicCourseList(request, env);
+      }
+
+      // 公开栏目页：按导航分类动态读取免费公开课程（保留原 URL，固定卡片改为动态列表）
+      if (url.pathname === "/guide" || url.pathname === "/guide/") {
+        return await handleNavSection(request, env, "guide");
+      }
+      if (url.pathname === "/products" || url.pathname === "/products/") {
+        return await handleNavSection(request, env, "products");
+      }
+      if (url.pathname === "/build" || url.pathname === "/build/" || url.pathname === "/tutorials" || url.pathname === "/tutorials/") {
+        return await handleNavSection(request, env, "build");
+      }
+      if (url.pathname === "/marketing" || url.pathname === "/marketing/") {
+        return await handleNavSection(request, env, "marketing");
       }
 
       // 兼容 /courses/<slug>/ 写法，统一跳到公开详情页

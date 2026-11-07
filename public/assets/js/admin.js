@@ -362,7 +362,7 @@
           },
         });
         dialog.close();
-        showCodeDialog(created.access_code, "会员编号 " + created.member.member_code + " · 永久会员");
+        showCodeDialog(created.access_code, "会员编号 " + created.member.member_code + " · VIP会员");
         loadMembers();
       } catch (err) {
         showAlert(alertEl, err.message);
@@ -445,6 +445,8 @@
   var contentState = { q: "", status: "" };
   var contentEditingId = null;
   var contentAttachment = null;
+  var contentFormat = "markdown"; // markdown | html
+  var contentChapters = []; // [{title, body, sort_order}]
 
   function syncAttachment(attachment) {
     contentAttachment = attachment || null;
@@ -466,36 +468,58 @@
     }
   }
 
+  function contentRowHtml(c) {
+    var actions =
+      '<button class="a-mini" data-act="edit" data-id="' + c.id + '">编辑</button>' +
+      (c.status === "published"
+        ? '<button class="a-mini" data-act="archive" data-id="' + c.id + '">下架</button>'
+        : '<button class="a-mini" data-act="publish" data-id="' + c.id + '">发布</button>') +
+      '<button class="a-mini danger" data-act="delete" data-id="' + c.id + '" data-name="' + esc(c.title) + '">删除</button>';
+
+    return "<tr><td><span class=\"a-cell-title\">" + esc(c.title) + '</span><span class="a-cell-sub mono">' +
+      esc(c.slug) + " · " + (c.body_length || 0) + " 字符" +
+      (c.attachment_name ? " · 附件 " + esc(c.attachment_name) : "") + "</span></td>" +
+      "<td>" + esc(c.category_name || "未分类") + "</td>" +
+      "<td>" + accessTag(c.access_level) + "</td>" +
+      "<td>" + statusTag(c.status) + "</td>" +
+      '<td><span class="a-mono">' + esc(c.sort_order) + "</span></td>" +
+      '<td><span class="a-mono">' + esc(fmt(c.updated_at)) + "</span></td>" +
+      '<td><div class="a-actions">' + actions + "</div></td></tr>";
+  }
+
   function renderContents(items) {
     var rows = $("#content-rows");
     if (!rows) return;
 
     if (!items.length) {
       rows.innerHTML = '<tr><td colspan="7" class="a-empty">还没有课程内容，先写一篇吧。</td></tr>';
+      bindContentRowActions();
       return;
     }
 
-    rows.innerHTML = items
-      .map(function (c) {
-        var actions =
-          '<button class="a-mini" data-act="edit" data-id="' + c.id + '">编辑</button>' +
-          (c.status === "published"
-            ? '<button class="a-mini" data-act="archive" data-id="' + c.id + '">下架</button>'
-            : '<button class="a-mini" data-act="publish" data-id="' + c.id + '">发布</button>') +
-          '<button class="a-mini danger" data-act="delete" data-id="' + c.id + '" data-name="' + esc(c.title) + '">删除</button>';
+    var grouped = $("#content-group-toggle") && $("#content-group-toggle").checked;
+    if (grouped) {
+      var groups = {};
+      items.forEach(function (c) {
+        var key = c.category_name || "未分类";
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(c);
+      });
+      var keys = Object.keys(groups).sort();
+      var html = "";
+      keys.forEach(function (k) {
+        html += '<tr class="a-group-row"><td colspan="7"><strong>' + esc(k) + "</strong> <span class=\"a-hint\">(" + groups[k].length + ")</span></td></tr>";
+        html += groups[k].map(contentRowHtml).join("");
+      });
+      rows.innerHTML = html;
+    } else {
+      rows.innerHTML = items.map(contentRowHtml).join("");
+    }
 
-        return "<tr><td><span class=\"a-cell-title\">" + esc(c.title) + '</span><span class="a-cell-sub mono">' +
-          esc(c.slug) + " · " + (c.body_length || 0) + " 字符" +
-          (c.attachment_name ? " · 附件 " + esc(c.attachment_name) : "") + "</span></td>" +
-          "<td>" + esc(c.category_name || "未分类") + "</td>" +
-          "<td>" + accessTag(c.access_level) + "</td>" +
-          "<td>" + statusTag(c.status) + "</td>" +
-          '<td><span class="a-mono">' + esc(c.sort_order) + "</span></td>" +
-          '<td><span class="a-mono">' + esc(fmt(c.updated_at)) + "</span></td>" +
-          '<td><div class="a-actions">' + actions + "</div></td></tr>";
-      })
-      .join("");
+    bindContentRowActions();
+  }
 
+  function bindContentRowActions() {
     $$("#content-rows [data-act]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = parseInt(btn.getAttribute("data-id"), 10);
@@ -556,8 +580,14 @@
     var dialog = $("#content-dialog");
     var form = $("#content-form");
     var alertEl = $("#content-alert");
+    var submit = $("#content-submit");
     if (!dialog || !form) return;
     hideAlert(alertEl);
+    // 复位保存按钮状态：上一次保存成功后对话框关闭，按钮可能仍处于 disabled
+    if (submit) {
+      submit.disabled = false;
+      submit.textContent = "保存";
+    }
 
     Promise.all([loadCategories(), id ? api("/api/admin/contents/" + id) : Promise.resolve(null)])
       .then(function (result) {
@@ -571,12 +601,18 @@
           form.elements.title.value = data.item.title || "";
           form.elements.slug.value = data.item.slug || "";
           form.elements.category_id.value = data.item.category_id || "";
+          form.elements.nav_category.value = data.item.nav_category || "";
+          form.elements.cover_image.value = data.item.cover_image || "";
           form.elements.content_type.value = data.item.content_type || "article";
           form.elements.access_level.value = data.item.access_level || "member";
           form.elements.status.value = data.item.status || "draft";
           form.elements.sort_order.value = data.item.sort_order || 0;
           form.elements.excerpt.value = data.item.excerpt || "";
-          form.elements.body.value = data.item.body || "";
+          contentFormat = data.item.content_format === "html" ? "html" : "markdown";
+          contentChapters = (data.item.chapters || []).map(function (c) {
+            return { title: c.title, body: c.body, sort_order: c.sort_order };
+          });
+          setContentFormat(contentFormat, data.item.body || "");
           $("#content-meta").textContent =
             "创建 " + fmt(data.item.created_at) + " · 更新 " + fmt(data.item.updated_at);
           syncAttachment(data.item.attachment);
@@ -587,14 +623,143 @@
           form.elements.access_level.value = "member";
           form.elements.status.value = "draft";
           form.elements.sort_order.value = 0;
-          $("#content-meta").textContent = "正文支持 Markdown，保存草稿不会出现在会员中心。";
+          form.elements.nav_category.value = "";
+          form.elements.cover_image.value = "";
+          contentFormat = "markdown";
+          contentChapters = [];
+          setContentFormat("markdown", "");
+          $("#content-meta").textContent = "正文支持 Markdown 或富文本，保存草稿不会出现在会员中心。";
           syncAttachment(null);
         }
+        applyContentTypeUI();
+        renderChapters();
         dialog.showModal();
       })
       .catch(function (err) {
         toast(err.message, true);
       });
+  }
+
+  // 设置正文格式（markdown/html），并把已有正文灌入对应编辑器
+  function setContentFormat(format, body) {
+    contentFormat = format;
+    var seg = $("#content-format-seg");
+    if (seg) {
+      seg.querySelectorAll(".a-seg-btn").forEach(function (b) {
+        b.classList.toggle("is-active", b.getAttribute("data-format") === format);
+      });
+    }
+    $("#content-body-markdown").hidden = format !== "markdown";
+    $("#content-body-html").hidden = format !== "html";
+    $("#content-rt-toolbar-wrap").hidden = format !== "html";
+    var ta = document.querySelector("#content-form textarea[name='body']");
+    var rt = $("#content-rt");
+    if (format === "markdown") {
+      if (ta) ta.value = body || "";
+    } else {
+      if (rt) rt.innerHTML = body || "";
+      if (ta) ta.value = "";
+    }
+  }
+
+  // 根据内容类型显示正文区或章景区
+  function applyContentTypeUI() {
+    var form = $("#content-form");
+    if (!form) return;
+    var type = form.elements.content_type.value;
+    var isChapter = type === "chapter";
+    $("#content-body-markdown").hidden = isChapter || contentFormat !== "markdown";
+    $("#content-body-html").hidden = isChapter || contentFormat !== "html";
+    $("#content-rt-toolbar-wrap").hidden = contentFormat !== "html";
+    $("#content-chapters").hidden = !isChapter;
+  }
+
+  // 渲染章节目录
+  function renderChapters() {
+    var list = $("#chapter-list");
+    if (!list) return;
+    if (!contentChapters.length) {
+      list.innerHTML = '<p class="a-hint">还没有章节，点击「添加章节」开始。</p>';
+      return;
+    }
+    var isHtml = contentFormat === "html";
+    list.innerHTML = contentChapters
+      .map(function (ch, i) {
+        var bodyField = isHtml
+          ? '<div class="a-chapter-rt" contenteditable="true" data-idx="' + i + '">' + (ch.body || "") + "</div>"
+          : '<textarea class="a-chapter-body" data-idx="' + i + '" rows="6" placeholder="章节正文（Markdown）…">' + esc(ch.body || "") + "</textarea>";
+        return '<div class="a-chapter-item">' +
+          '<div class="a-chapter-head">' +
+            '<span class="a-mono">第 ' + (i + 1) + " 章</span>" +
+            '<input type="text" placeholder="章节标题" data-ch-title data-idx="' + i + '" value="' + esc(ch.title || "") + '">' +
+            '<button type="button" class="a-mini" data-ch-up data-idx="' + i + '">↑</button>' +
+            '<button type="button" class="a-mini" data-ch-down data-idx="' + i + '">↓</button>' +
+            '<button type="button" class="a-mini danger" data-ch-del data-idx="' + i + '">删</button>' +
+          "</div>" +
+          bodyField +
+          "</div>";
+      })
+      .join("");
+
+    list.querySelectorAll("[data-ch-title]").forEach(function (el) {
+      el.addEventListener("input", function () {
+        var i = +el.getAttribute("data-idx");
+        if (contentChapters[i]) contentChapters[i].title = el.value;
+      });
+    });
+    list.querySelectorAll("textarea.a-chapter-body").forEach(function (el) {
+      el.addEventListener("input", function () {
+        var i = +el.getAttribute("data-idx");
+        if (contentChapters[i]) contentChapters[i].body = el.value;
+      });
+    });
+    list.querySelectorAll("div.a-chapter-rt").forEach(function (el) {
+      el.addEventListener("input", function () {
+        var i = +el.getAttribute("data-idx");
+        if (contentChapters[i]) contentChapters[i].body = el.innerHTML;
+      });
+    });
+    list.querySelectorAll("[data-ch-up]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = +b.getAttribute("data-idx");
+        if (i > 0) {
+          var tmp = contentChapters[i];
+          contentChapters[i] = contentChapters[i - 1];
+          contentChapters[i - 1] = tmp;
+          renderChapters();
+        }
+      });
+    });
+    list.querySelectorAll("[data-ch-down]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = +b.getAttribute("data-idx");
+        if (i < contentChapters.length - 1) {
+          var tmp = contentChapters[i];
+          contentChapters[i] = contentChapters[i + 1];
+          contentChapters[i + 1] = tmp;
+          renderChapters();
+        }
+      });
+    });
+    list.querySelectorAll("[data-ch-del]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var i = +b.getAttribute("data-idx");
+        if (window.confirm("删除第 " + (i + 1) + " 章？")) {
+          contentChapters.splice(i, 1);
+          renderChapters();
+        }
+      });
+    });
+  }
+
+  // 从编辑器采集正文
+  function collectContentBody() {
+    if (contentFormat === "html") {
+      var rt = $("#content-rt");
+      return rt ? rt.innerHTML : "";
+    }
+    var ta = document.querySelector("#content-form textarea[name='body']");
+    return ta ? ta.value : "";
   }
 
   function initContent() {
@@ -610,6 +775,54 @@
         openContentEditor(null);
       });
     });
+
+    // 正文格式切换
+    $$("#content-format-seg .a-seg-btn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var fmt = b.getAttribute("data-format");
+        var current = collectContentBody();
+        setContentFormat(fmt, current);
+        applyContentTypeUI();
+        renderChapters();
+      });
+    });
+
+    // 内容类型切换
+    var contentTypeSelect = form.elements.content_type;
+    if (contentTypeSelect) {
+      contentTypeSelect.addEventListener("change", applyContentTypeUI);
+    }
+
+    // 添加章节
+    var addChapterBtn = $("#chapter-add");
+    if (addChapterBtn) {
+      addChapterBtn.addEventListener("click", function () {
+        contentChapters.push({ title: "", body: "", sort_order: contentChapters.length });
+        renderChapters();
+      });
+    }
+
+    // 富文本工具栏：对当前聚焦的 contenteditable 执行命令
+    var rtToolbar = $("#content-rt-toolbar");
+    if (rtToolbar) {
+      rtToolbar.addEventListener("mousedown", function (e) {
+        e.preventDefault(); // 防止失焦
+      });
+      rtToolbar.addEventListener("click", function (e) {
+        var btn = e.target.closest("button[data-cmd]");
+        if (!btn) return;
+        var cmd = btn.getAttribute("data-cmd");
+        var val = btn.getAttribute("data-val") || null;
+        if (cmd === "createLink") {
+          var url = window.prompt("输入链接地址（http/https）：", "https://");
+          if (url) document.execCommand("createLink", false, url);
+        } else if (val) {
+          document.execCommand(cmd, false, val);
+        } else {
+          document.execCommand(cmd, false, null);
+        }
+      });
+    }
 
     var imageBtn = $("#content-image-upload");
     if (imageBtn) {
@@ -644,12 +857,27 @@
             throw new Error((data && data.message) || "图片上传失败，请稍后重试。");
           }
 
-          var ta = form.elements.body;
-          var insert = "\n\n![图片说明](" + data.url + ")\n\n";
-          var start = typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length;
-          var end = typeof ta.selectionEnd === "number" ? ta.selectionEnd : ta.value.length;
-          ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
-          ta.focus();
+          if (contentFormat === "html") {
+            // 富文本模式：在当前聚焦的 contenteditable 光标处插入图片
+            var target = document.activeElement;
+            if (target && target.isContentEditable) {
+              target.focus();
+              document.execCommand("insertImage", false, data.url);
+            } else {
+              var rt = $("#content-rt");
+              if (rt) {
+                rt.focus();
+                document.execCommand("insertImage", false, data.url);
+              }
+            }
+          } else {
+            var ta = form.elements.body;
+            var insert = "\n\n![图片说明](" + data.url + ")\n\n";
+            var start = typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length;
+            var end = typeof ta.selectionEnd === "number" ? ta.selectionEnd : ta.value.length;
+            ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
+            ta.focus();
+          }
           if (hint) hint.textContent = "已插入： " + data.url;
           toast("图片已上传并插入正文");
         } catch (err) {
@@ -731,20 +959,32 @@
 
     form.addEventListener("submit", async function (event) {
       event.preventDefault();
+      if (submit.disabled) return; // 防重复提交
       hideAlert(alertEl);
       submit.disabled = true;
+      var originalText = submit.textContent || "保存";
+      submit.textContent = "保存中…";
 
       var fd = new FormData(form);
+      var contentType = fd.get("content_type");
       var payload = {
         title: fd.get("title"),
         slug: fd.get("slug"),
         category_id: fd.get("category_id") || null,
-        content_type: fd.get("content_type"),
+        nav_category: fd.get("nav_category") || null,
+        cover_image: fd.get("cover_image") || "",
+        content_type: contentType,
+        content_format: contentFormat,
         access_level: fd.get("access_level"),
         status: fd.get("status"),
         sort_order: fd.get("sort_order"),
         excerpt: fd.get("excerpt"),
-        body: fd.get("body"),
+        body: contentType === "chapter" ? "" : collectContentBody(),
+        chapters: contentType === "chapter"
+          ? contentChapters.map(function (c, i) {
+              return { title: c.title, body: c.body, sort_order: i };
+            })
+          : [],
       };
 
       try {
@@ -759,7 +999,9 @@
         loadContents();
       } catch (err) {
         showAlert(alertEl, err.message);
+      } finally {
         submit.disabled = false;
+        submit.textContent = originalText;
       }
     });
 
@@ -778,7 +1020,132 @@
       $("#content-search-btn").click();
     });
 
+    // 按分类分组切换
+    var groupToggle = $("#content-group-toggle");
+    if (groupToggle) {
+      groupToggle.addEventListener("change", function () {
+        loadContents();
+      });
+    }
+
+    // 课程分类管理
+    initCategoryManagement(loadContents);
+
     loadContents();
+  }
+
+  function initCategoryManagement(onChange) {
+    var rowsEl = $("#category-rows");
+    if (!rowsEl) return;
+    var itemsCache = [];
+
+    function renderCategories(items) {
+      itemsCache = items || [];
+      if (!itemsCache.length) {
+        rowsEl.innerHTML = '<tr><td colspan="6" class="a-empty">暂无分类，添加一个开始。</td></tr>';
+        return;
+      }
+      var typeLabel = { course: "课程", resource: "资料", tool: "工具" };
+      rowsEl.innerHTML = itemsCache.map(function (c) {
+        return '<tr>' +
+          '<td>' + esc(c.name) + '</td>' +
+          '<td class="a-mono">' + esc(c.slug) + '</td>' +
+          '<td>' + (typeLabel[c.type] || c.type) + '</td>' +
+          '<td>' + (c.status === "disabled" ? '<span class="m-tag">已禁用</span>' : '<span class="m-tag free">启用</span>') + '</td>' +
+          '<td class="a-mono">' + esc(c.sort_order) + '</td>' +
+          '<td class="a-right"><div class="a-actions">' +
+            '<button class="a-mini" data-cat-edit="' + c.id + '">编辑</button>' +
+            '<button class="a-mini danger" data-cat-del="' + c.id + '" data-name="' + esc(c.name) + '">删除</button>' +
+          '</div></td>' +
+        '</tr>';
+      }).join("");
+
+      rowsEl.querySelectorAll("[data-cat-edit]").forEach(function (b) {
+        b.addEventListener("click", function () { editCategory(+b.getAttribute("data-cat-edit")); });
+      });
+      rowsEl.querySelectorAll("[data-cat-del]").forEach(function (b) {
+        b.addEventListener("click", function () { deleteCategory(+b.getAttribute("data-cat-del"), b.getAttribute("data-name")); });
+      });
+    }
+
+    async function loadCategories() {
+      try {
+        var data = await api("/api/admin/categories");
+        renderCategories(data.items || []);
+      } catch (err) {
+        rowsEl.innerHTML = '<tr><td colspan="6" class="a-empty">' + esc(err.message) + "</td></tr>";
+      }
+    }
+
+    async function createCategory() {
+      var name = ($("#cat-name").value || "").trim();
+      var slug = ($("#cat-slug").value || "").trim().toLowerCase();
+      if (!name || !slug) { toast("请填写分类名称和标识", true); return; }
+      try {
+        await api("/api/admin/categories", {
+          method: "POST",
+          body: {
+            name: name, slug: slug,
+            type: $("#cat-type").value,
+            sort_order: Number($("#cat-sort").value || 0),
+            status: $("#cat-status").value,
+          },
+        });
+        $("#cat-name").value = "";
+        $("#cat-slug").value = "";
+        toast("分类已添加");
+        loadCategories();
+        if (onChange) onChange();
+      } catch (err) { toast(err.message, true); }
+    }
+
+    function editCategory(id) {
+      var c = itemsCache.filter(function (x) { return x.id === id; })[0];
+      if (!c) return;
+      var name = window.prompt("分类名称：", c.name);
+      if (name === null) return;
+      var slug = window.prompt("标识 slug：", c.slug);
+      if (slug === null) return;
+      api("/api/admin/categories/" + id, {
+        method: "POST",
+        body: { name: name.trim(), slug: slug.trim().toLowerCase(), type: c.type, sort_order: c.sort_order, status: c.status },
+      })
+        .then(function () { toast("分类已更新"); loadCategories(); if (onChange) onChange(); })
+        .catch(function (err) { toast(err.message, true); });
+    }
+
+    function deleteCategory(id, name) {
+      api("/api/admin/categories/" + id, { method: "DELETE" })
+        .then(function () { toast("分类已删除"); loadCategories(); if (onChange) onChange(); })
+        .catch(async function (err) {
+          // 409：分类仍有关联课程，询问是否迁移后删除
+          if (err.code === "category_in_use") {
+            var target = window.prompt(
+              "该分类仍有关联课程，无法直接删除。\n输入目标分类 ID 进行迁移后删除（留空则设为未分类）：",
+              ""
+            );
+            if (target === null) return;
+            var targetId = target.trim() === "" ? null : Number(target.trim());
+            if (target !== "" && !Number.isFinite(targetId)) { toast("目标分类 ID 无效", true); return; }
+            try {
+              await api("/api/admin/categories/" + id + "/migrate", {
+                method: "POST",
+                body: { target_category_id: targetId },
+              });
+              toast("已迁移并删除分类");
+              loadCategories();
+              if (onChange) onChange();
+            } catch (e) { toast(e.message, true); }
+          } else {
+            toast(err.message, true);
+          }
+        });
+    }
+
+    var createBtn = $("#cat-create");
+    if (createBtn) createBtn.addEventListener("click", createCategory);
+
+    loadCategories();
   }
 
   /* ---------------- 资料管理 ---------------- */
@@ -1218,6 +1585,7 @@
     var editingId = null;
     var cache = [];
     var state = { q: "", status: "" };
+    var caseFormat = "markdown";
 
     function render(items) {
       cache = items;
@@ -1283,9 +1651,42 @@
         "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
     }
 
+    function setCaseFormat(format, body) {
+      caseFormat = format;
+      var seg = $("#case-format-seg");
+      if (seg) {
+        seg.querySelectorAll(".a-seg-btn").forEach(function (b) {
+          b.classList.toggle("is-active", b.getAttribute("data-format") === format);
+        });
+      }
+      $("#case-body-markdown").hidden = format !== "markdown";
+      $("#case-body-html").hidden = format !== "html";
+      var ta = document.querySelector("#case-form textarea[name='body']");
+      var rt = $("#case-rt");
+      if (format === "markdown") {
+        if (ta) ta.value = body || "";
+      } else {
+        if (rt) rt.innerHTML = body || "";
+        if (ta) ta.value = "";
+      }
+    }
+    function collectCaseBody() {
+      if (caseFormat === "html") {
+        var rt = $("#case-rt");
+        return rt ? rt.innerHTML : "";
+      }
+      var ta = document.querySelector("#case-form textarea[name='body']");
+      return ta ? ta.value : "";
+    }
+
     function openEditor(id) {
       if (!dialog || !form) return;
       hideAlert(alertEl);
+      var caseSubmit = $("#case-submit");
+      if (caseSubmit) {
+        caseSubmit.disabled = false;
+        caseSubmit.textContent = "保存";
+      }
 
       function populate(item) {
         if (item) {
@@ -1301,7 +1702,8 @@
           form.elements.external_link.value = item.external_link || "";
           form.elements.summary.value = item.summary || "";
           form.elements.cover_image.value = item.cover_image || "";
-          form.elements.body.value = item.body || "";
+          caseFormat = item.content_format === "html" ? "html" : "markdown";
+          setCaseFormat(caseFormat, item.body || "");
           $("#case-meta").textContent = "创建 " + fmt(item.created_at) + " · 更新 " + fmt(item.updated_at);
         } else {
           editingId = null;
@@ -1310,6 +1712,8 @@
           form.elements.status.value = "draft";
           form.elements.sort_order.value = 0;
           form.elements.show_on_home.value = "0";
+          caseFormat = "markdown";
+          setCaseFormat("markdown", "");
           $("#case-meta").textContent = "发布后前台 /cases/ 立即可见；勾选首页展示才会出现在首页板块。";
         }
         dialog.showModal();
@@ -1423,12 +1827,95 @@
       });
     }
 
+    // 案例正文格式切换
+    $$("#case-format-seg .a-seg-btn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var fmt = b.getAttribute("data-format");
+        var current = collectCaseBody();
+        setCaseFormat(fmt, current);
+      });
+    });
+
+    // 案例富文本工具栏
+    var caseToolbar = $("#case-rt-toolbar");
+    if (caseToolbar) {
+      caseToolbar.addEventListener("mousedown", function (e) { e.preventDefault(); });
+      caseToolbar.addEventListener("click", function (e) {
+        var btn = e.target.closest("button[data-cmd]");
+        if (!btn) return;
+        var cmd = btn.getAttribute("data-cmd");
+        var val = btn.getAttribute("data-val") || null;
+        if (cmd === "createLink") {
+          var url = window.prompt("输入链接地址（http/https）：", "https://");
+          if (url) document.execCommand("createLink", false, url);
+        } else if (val) {
+          document.execCommand(cmd, false, val);
+        } else {
+          document.execCommand(cmd, false, null);
+        }
+      });
+    }
+
+    // 案例正文配图上传并插入
+    var caseBodyImgBtn = $("#case-body-image-upload");
+    if (caseBodyImgBtn) {
+      caseBodyImgBtn.addEventListener("click", async function () {
+        var input = $("#case-body-image");
+        var hint = $("#case-body-image-hint");
+        var file = input && input.files && input.files[0];
+        if (!file) {
+          showAlert(alertEl, "请选择要上传的图片。");
+          return;
+        }
+        caseBodyImgBtn.disabled = true;
+        caseBodyImgBtn.textContent = "上传中…";
+        hideAlert(alertEl);
+        try {
+          var fd = new FormData();
+          fd.append("file", file);
+          var res = await fetch("/api/admin/uploads/image", {
+            method: "POST",
+            credentials: "same-origin",
+            body: fd,
+          });
+          var data = await res.json().catch(function () { return null; });
+          if (res.status === 401) { location.href = "/admin/"; return; }
+          if (!res.ok || !data || !data.ok) {
+            throw new Error((data && data.message) || "图片上传失败，请稍后重试。");
+          }
+          if (caseFormat === "html") {
+            var rt = $("#case-rt");
+            if (rt) { rt.focus(); document.execCommand("insertImage", false, data.url); }
+          } else {
+            var ta = form.elements.body;
+            var insert = "\n\n![图片说明](" + data.url + ")\n\n";
+            var start = typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length;
+            var end = typeof ta.selectionEnd === "number" ? ta.selectionEnd : ta.value.length;
+            ta.value = ta.value.slice(0, start) + insert + ta.value.slice(end);
+            ta.focus();
+          }
+          if (hint) hint.textContent = "已插入：" + data.url;
+          toast("图片已上传并插入正文");
+        } catch (err) {
+          showAlert(alertEl, err.message);
+        } finally {
+          caseBodyImgBtn.disabled = false;
+          caseBodyImgBtn.textContent = "上传并插入";
+        }
+      });
+    }
+
     if (form) {
       form.addEventListener("submit", async function (event) {
         event.preventDefault();
-        hideAlert(alertEl);
         var submit = $("#case-submit");
-        submit.disabled = true;
+        if (submit && submit.disabled) return; // 防重复提交
+        hideAlert(alertEl);
+        if (submit) {
+          submit.disabled = true;
+          var originText = submit.textContent || "保存";
+          submit.textContent = "保存中…";
+        }
         try {
           var publishedRaw = form.elements.published_at.value;
           var payload = {
@@ -1442,7 +1929,8 @@
             external_link: form.elements.external_link.value,
             summary: form.elements.summary.value,
             cover_image: form.elements.cover_image.value,
-            body: form.elements.body.value,
+            content_format: caseFormat,
+            body: collectCaseBody(),
           };
           if (editingId) {
             await api("/api/admin/cases/" + editingId, { method: "POST", body: payload });
@@ -1456,7 +1944,10 @@
         } catch (err) {
           showAlert(alertEl, err.message);
         } finally {
-          submit.disabled = false;
+          if (submit) {
+            submit.disabled = false;
+            submit.textContent = originText || "保存";
+          }
         }
       });
     }

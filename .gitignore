@@ -6,3 +6,4 @@ node_modules/
 *.sqlite-journal
 backup-*.sql
 .DS_Store
+.trae/

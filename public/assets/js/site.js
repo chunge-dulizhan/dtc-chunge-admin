@@ -142,7 +142,9 @@
   }
 
   /* ---------- 文章目录高亮 ---------- */
-  var tocLinks = Array.prototype.slice.call(document.querySelectorAll(".toc-list a[href^='#']"));
+  var tocLinks = Array.prototype.slice.call(
+    document.querySelectorAll(".toc-list a[href^='#'], .m-toc a[href^='#']")
+  );
 
   if (tocLinks.length) {
     var sections = tocLinks
