@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -43,16 +43,34 @@ db.exec(readFileSync(join(root, "db", "seed.sql"), "utf8"));
 const pending = [];
 const env = {
   DB: makeD1(db),
-  // 模拟真实 Pages 静态资源：只对预先存在的文件返回 200，其他返回 404
+  // 模拟真实 Pages 静态资源：优先按磁盘上的真实文件返回（第三阶段首页/文章需读取真实文件），不存在时退回占位页
   ASSETS: {
     fetch: async (req) => {
       const pathname = new URL(req.url).pathname;
-      // 预先打包的静态 media 文件不存在（测试里没有放），其他静态路径也一律返回 404
-      // 真实 Pages 会扫描 public/ 目录，不存在的返回 404
       if (pathname.startsWith("/media/")) {
         return new Response("Not Found", { status: 404 });
       }
-      // 模拟首页等静态页：带 data-copy 标记，便于测试文案替换
+      // 目录路径按 Pages 规则补 index.html（如 /member/ -> member/index.html）
+      let rel = pathname.replace(/^\/+/, "");
+      if (rel === "" || rel.endsWith("/")) rel += "index.html";
+      const filePath = join(root, "public", rel);
+      try {
+        if (existsSync(filePath) && statSync(filePath).isFile()) {
+          const ext = filePath.split(".").pop().toLowerCase();
+          const type =
+            ext === "html" ? "text/html; charset=utf-8" :
+            ext === "css" ? "text/css; charset=utf-8" :
+            ext === "js" ? "application/javascript; charset=utf-8" :
+            ext === "json" ? "application/json; charset=utf-8" :
+            ext === "svg" ? "image/svg+xml" :
+            ext === "png" ? "image/png" :
+            ext === "webp" ? "image/webp" : "application/octet-stream";
+          return new Response(readFileSync(filePath), { status: 200, headers: { "Content-Type": type } });
+        }
+      } catch {
+        /* 读取失败时退回占位页 */
+      }
+      // 占位静态页：带 data-copy 标记，便于测试文案替换
       return new Response(
         `<html>static<nav><a href="/"><span data-copy="public.nav.home">首页</span></a><a href="/courses/"><span data-copy="public.nav.courses">免费课程</span></a><a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span></a><a href="/build/"><span data-copy="public.nav.build">建站教程</span></a></nav>` +
           `<h1 data-copy="public.home.hero.title">默认首页标题</h1>` +
@@ -812,9 +830,9 @@ let memberCookie = "";
   assert.equal(saved.res.status, 200, saved.text);
   pass("管理员可保存网站设置");
 
-  const staticPage = await call("/");
+  const staticPage = await call("/member/");
   assert.equal(staticPage.res.status, 200);
-  assert.match(staticPage.text, /static/);
+  assert.match(staticPage.text, /member-login\.js/);
   pass("设置生效后没有命中替换的页面仍可完整返回");
 
   const page = await call("/library/what-is-dtc");
@@ -2099,6 +2117,626 @@ let memberCookie = "";
   const adminJsPhase2 = readFileSync(join(root, "public", "assets", "js", "admin.js"), "utf8");
   assert.match(adminJsPhase2, /syncContentVisibilityHint/, "admin.js 必须包含可见性提示联动逻辑");
   pass("课程表单提供免费公开/VIP 权限的前台可见性提示");
+}
+
+/* ---------------- 35. 第三阶段：公开前台升级（首页 SSR + 统一外壳 + 两级成长路线） ---------------- */
+{
+  const count = (s, re) => (s.match(re) || []).length;
+
+  /* 35.1 首页服务端渲染：统一页头页脚 + 完整板块结构 */
+  const home = await call("/");
+  assert.equal(home.res.status, 200);
+  assert.match(home.res.headers.get("Content-Type"), /text\/html/);
+  assert.equal(count(home.text, /class="site-header"/g), 1, "首页必须恰好一个公共页头");
+  assert.equal(count(home.text, /class="site-footer"/g), 1, "首页必须恰好一个公共页脚");
+  assert.equal(count(home.text, /<main>/g), 1, "首页必须恰好一个 main");
+  for (const id of ['id="about"', 'id="roadmap"', 'id="coaching"', 'id="knowledge"', 'id="tools"', 'id="faq"', 'id="wechat"']) {
+    assert.ok(home.text.includes(id), `首页必须包含板块 ${id}`);
+  }
+  assert.ok(home.text.includes('data-copy="public.home.hero.title"'), "首页主标题必须接入文案管理");
+  assert.ok(!home.text.includes("<!--HOME_ROADMAP-->") && !home.text.includes("<!--HOME_COURSES-->") && !home.text.includes("<!--HOME_TOOLS-->"), "模板令牌必须全部被替换");
+  pass("首页 SSR：统一页头页脚 + 板块结构完整 + 令牌全部替换");
+
+  /* 35.2 成长路线：数量、名称、学习内容全部来自 roadmap.json，不写死 */
+  const roadmap = JSON.parse(readFileSync(join(root, "public", "data", "roadmap.json"), "utf8"));
+  const visibleStages = roadmap.stages.filter((s) => s.visible !== false);
+  assert.equal(count(home.text, /class="roadmap-stage /g), visibleStages.length, "首页阶段数量必须与配置一致");
+  for (const s of visibleStages) {
+    assert.ok(home.text.includes(s.name), `首页必须渲染阶段「${s.name}」`);
+    for (const t of (s.topics || []).filter((t) => t.visible !== false)) {
+      assert.ok(home.text.includes(t.name), `首页必须渲染学习内容「${t.name}」`);
+    }
+  }
+  pass("首页成长路线：阶段与内部学习内容全部按配置动态渲染");
+
+  /* 35.3 首页免费课程：仅 free 且 published */
+  const freeC = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "阶段三验收首页免费课", slug: "phase3-home-free", access_level: "free", status: "published", body: "测试正文" },
+  });
+  assert.equal(freeC.res.status, 200, freeC.text);
+  const memberC = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "阶段三验收首页会员课", slug: "phase3-home-member", access_level: "member", status: "published", body: "测试正文" },
+  });
+  assert.equal(memberC.res.status, 200, memberC.text);
+  const draftC = await call("/api/admin/contents", {
+    method: "POST",
+    cookie: adminCookie,
+    body: { title: "阶段三验收首页草稿课", slug: "phase3-home-draft", access_level: "free", status: "draft", body: "测试正文" },
+  });
+  assert.equal(draftC.res.status, 200, draftC.text);
+  const home2 = await call("/");
+  assert.ok(home2.text.includes("阶段三验收首页免费课"), "新发布免费课程必须出现在首页");
+  assert.ok(!home2.text.includes("阶段三验收首页会员课"), "会员专属课程不得出现在首页");
+  assert.ok(!home2.text.includes("阶段三验收首页草稿课"), "草稿课程不得出现在首页");
+  pass("首页免费课程：仅展示 free 且已发布课程，会员课与草稿被过滤");
+
+  /* 35.4 首页工具：按已发布工具动态渲染（含 ai-sourcing） */
+  const publishedTools = db.prepare("SELECT COUNT(*) AS c FROM tools WHERE status = 'published'").get().c;
+  assert.equal(count(home2.text, /class="tool-card"/g), publishedTools, "首页工具数量必须与已发布工具一致");
+  assert.ok(home2.text.includes("AI 选品 SOP"), "首页必须包含 ai-sourcing 工具");
+  assert.ok(!home2.text.includes("delete-me-tool"), "已删除工具不得出现在首页");
+  pass("首页工具：与后台已发布工具保持一致（含 ai-sourcing）");
+
+  /* 35.5 微信咨询：保留微信号 + 预留二维码位，不放假二维码 */
+  assert.ok(home2.text.includes("ch022427"), "首页必须保留微信号咨询入口");
+  assert.ok(home2.text.includes('class="wechat-qr-slot" hidden'), "二维码位必须预留且保持隐藏");
+  assert.ok(!/<img[^>]*wechat-qr/.test(home2.text), "未提供真实素材前不得渲染二维码图片");
+  pass("微信咨询：保留 ch022427 文字入口并预留真实二维码位置");
+
+  /* 35.6 关于春哥 / 一对一带教页面 */
+  const about = await call("/about/");
+  assert.equal(about.res.status, 200);
+  assert.equal(count(about.text, /class="site-header"/g), 1, "关于页必须使用公共页头");
+  assert.equal(count(about.text, /class="site-footer"/g), 1, "关于页必须使用公共页脚");
+  assert.ok(about.text.includes("待补充"), "素材不足处必须标注「待补充」，不得虚构");
+  const coaching = await call("/coaching/");
+  assert.equal(coaching.res.status, 200);
+  assert.equal(count(coaching.text, /class="site-header"/g), 1, "带教页必须使用公共页头");
+  assert.ok(coaching.text.includes("ch022427"), "带教页必须保留微信咨询入口");
+  pass("关于春哥与一对一带教页面上线，缺口标注「待补充」");
+
+  /* 35.7 4 篇静态文章统一套公共外壳，不残留私有页头页脚 */
+  for (const p of ["/guide/90-day-roadmap.html", "/products/validation.html", "/build/shopify-day-one.html", "/marketing/first-ad.html"]) {
+    const art = await call(p);
+    assert.equal(art.res.status, 200, `${p} 必须可访问`);
+    assert.equal(count(art.text, /class="site-header"/g), 1, `${p} 必须恰好一个公共页头`);
+    assert.equal(count(art.text, /class="site-footer"/g), 1, `${p} 必须恰好一个公共页脚`);
+    assert.equal(count(art.text, /<main/g), 1, `${p} 不得残留双层 main`);
+  }
+  pass("4 篇静态知识文章统一由公共模块渲染页头页脚");
+
+  /* 35.8 多页面页头页脚逐字节一致（同一公共渲染模块输出） */
+  const uniPages = ["/", "/about/", "/coaching/", "/courses/", "/cases/", "/guide/90-day-roadmap.html"];
+  const stripCurrent = (h) => h.replace(/ aria-current="page"/g, "");
+  const sigs = [];
+  for (const p of uniPages) {
+    const r = await call(p);
+    assert.equal(r.res.status, 200, `${p} 必须可访问`);
+    const hm = r.text.match(/<header class="site-header">[\s\S]*?<\/header>/);
+    const fm = r.text.match(/<footer class="site-footer">[\s\S]*?<\/footer>/);
+    assert.ok(hm && fm, `${p} 必须包含公共页头与页脚`);
+    sigs.push([p, hm[0], fm[0]]);
+  }
+  for (let i = 1; i < sigs.length; i++) {
+    assert.equal(stripCurrent(sigs[i][1]), stripCurrent(sigs[0][1]), `${sigs[i][0]} 页头必须与首页完全一致（不含激活状态）`);
+    assert.equal(sigs[i][2], sigs[0][2], `${sigs[i][0]} 页脚必须与首页完全一致`);
+  }
+  // 激活状态必须指向当前栏目，且只出现一次
+  const navExpect = { "/": "/", "/about/": "/about/", "/coaching/": "/coaching/", "/courses/": "/courses/", "/cases/": "/cases/" };
+  for (const [p, href] of Object.entries(navExpect)) {
+    const r = await call(p);
+    assert.equal(count(r.text, /aria-current="page"/g), 1, `${p} 必须恰好一个激活导航项`);
+    assert.ok(r.text.includes(`href="${href}" aria-current="page"`), `${p} 激活项必须指向 ${href}`);
+  }
+  pass("首页/课程/案例/关于/带教/静态文章页头页脚逐字节一致，激活状态正确");
+
+  /* 35.9 成长路线渲染函数单测：动态数量、排序、显隐、转义 */
+  const { renderRoadmapStages: renderRm } = await import(pathToFileURL(join(root, "public", "_worker.js")).href);
+  const rmOut = renderRm({
+    stages: [
+      { id: "b", name: "第二阶段", order: 2, visible: true, topics: [
+        { id: "b2", name: "主题B2", order: 2, visible: true },
+        { id: "b1", name: "主题B1", order: 1, visible: true },
+      ] },
+      { id: "a", name: "第一阶段", order: 1, visible: true, topics: [
+        { id: "a1", name: "主题A1", order: 1, visible: true },
+        { id: "a2", name: "主题A2", order: 2, visible: false },
+        { id: "a3", name: "主题A3", order: 3, visible: true },
+      ] },
+      { id: "c", name: "隐藏阶段", order: 3, visible: false, topics: [] },
+      { id: "d", name: "第三阶段", order: 4, visible: true, topics: [] },
+    ],
+  });
+  assert.equal(count(rmOut, /class="roadmap-stage /g), 3, "隐藏阶段不得渲染，数量完全由配置决定");
+  assert.ok(rmOut.indexOf("第一阶段") > -1 && rmOut.indexOf("第一阶段") < rmOut.indexOf("第二阶段") && rmOut.indexOf("第二阶段") < rmOut.indexOf("第三阶段"), "阶段必须按 order 排序");
+  assert.ok(!rmOut.includes("隐藏阶段"), "visible=false 阶段不得输出");
+  assert.ok(!rmOut.includes("主题A2"), "visible=false 主题不得输出");
+  assert.ok(rmOut.indexOf("主题B1") < rmOut.indexOf("主题B2"), "主题必须按 order 排序");
+  assert.match(renderRm({ stages: [] }), /home-empty/, "空配置必须输出空态");
+  assert.match(renderRm(null), /home-empty/, "配置缺失必须输出空态");
+  assert.ok(renderRm({ stages: [{ id: "x", name: "<script>alert(1)</script>", order: 1, visible: true, topics: [] }] }).includes("&lt;script&gt;"), "配置内容必须 HTML 转义");
+  pass("成长路线渲染：数量/排序/显隐/转义全部动态，不写死阶段数量");
+
+  /* 35.10 roadmap.json 结构校验：id 唯一、order 数值、名称非空 */
+  const sids = new Set();
+  for (const s of roadmap.stages) {
+    assert.ok(s.id && !sids.has(s.id), "阶段 id 必须非空且唯一");
+    sids.add(s.id);
+    assert.ok(typeof s.name === "string" && s.name.trim(), "阶段名称不得为空");
+    assert.equal(typeof s.order, "number", "阶段 order 必须为数值");
+    assert.ok(Array.isArray(s.topics), "阶段必须包含 topics 数组");
+    const tids = new Set();
+    for (const t of s.topics) {
+      assert.ok(t.id && !tids.has(t.id), `阶段 ${s.id} 内主题 id 必须唯一`);
+      tids.add(t.id);
+      assert.ok(typeof t.name === "string" && t.name.trim(), "主题名称不得为空");
+      assert.equal(typeof t.order, "number", "主题 order 必须为数值");
+    }
+  }
+  pass("roadmap.json 结构合法：id 唯一、order 数值、名称非空");
+
+  /* 35.11 /index.html 301 到 / */
+  const idx = await call("/index.html");
+  assert.equal(idx.res.status, 301);
+  assert.equal(idx.res.headers.get("Location"), ORIGIN + "/");
+  pass("/index.html 301 跳转到 /，首页地址唯一");
+}
+
+/* ---------------- 36. 第三阶段子任务3：免费课程与案例页优化 ---------------- */
+{
+  const count = (s, re) => (s.match(re) || []).length;
+
+  // 准备独立测试数据：两门同类免费课、一门同类会员课、一门草稿课
+  const mkCourse = (body) => call("/api/admin/contents", { method: "POST", cookie: adminCookie, body });
+  const free1 = await mkCourse({
+    title: "子任务三免费课 A", slug: "st3-free-a", access_level: "free", status: "published",
+    category_id: 1, excerpt: "免费课程简介 A", sort_order: 1,
+    body: "# 阅读体验\n\n这是完整正文段落，用于验证内容未被截断。\n\n| 列一 | 列二 |\n|---|---|\n| 1 | 2 |\n\n```js\nconsole.log(1)\n```",
+  });
+  assert.equal(free1.res.status, 200, free1.text);
+  const free2 = await mkCourse({
+    title: "子任务三免费课 B", slug: "st3-free-b", access_level: "free", status: "published",
+    category_id: 1, excerpt: "免费课程简介 B", sort_order: 2, body: "# B\n\n正文 B",
+  });
+  assert.equal(free2.res.status, 200, free2.text);
+  const member1 = await mkCourse({
+    title: "子任务三会员课", slug: "st3-member", access_level: "member", status: "published",
+    category_id: 1, excerpt: "会员课程简介", body: "# 会员内容",
+  });
+  assert.equal(member1.res.status, 200, member1.text);
+  const draft1 = await mkCourse({
+    title: "子任务三草稿课", slug: "st3-draft", access_level: "free", status: "draft",
+    category_id: 1, excerpt: "草稿简介", body: "# 草稿",
+  });
+  assert.equal(draft1.res.status, 200, draft1.text);
+
+  /* 36.1 免费课程列表：卡片网格 + 动态总数 + 权限过滤 */
+  const cl = await call("/courses/");
+  assert.equal(cl.res.status, 200);
+  assert.ok(cl.text.includes('class="course-list-grid"'), "课程列表必须使用卡片网格");
+  const freeCount = db.prepare("SELECT COUNT(*) AS c FROM contents WHERE status='published' AND access_level='free'").get().c;
+  assert.equal(count(cl.text, /class="course-card"/g), freeCount, "卡片数量必须等于 free+published 课程数");
+  assert.ok(cl.text.includes(`共 ${freeCount} 门免费课程`), "必须动态显示课程总数");
+  assert.ok(cl.text.includes("/library/st3-free-a/"), "免费课程必须可进入详情");
+  assert.ok(cl.text.includes("开始学习"), "卡片必须有明确的进入学习入口");
+  assert.doesNotMatch(cl.text, /子任务三会员课/, "会员课程不得出现在免费课程列表");
+  assert.doesNotMatch(cl.text, /子任务三草稿课/, "草稿课程不得出现在免费课程列表");
+  pass("免费课程列表：卡片化、动态总数、只展示 free+published");
+
+  /* 36.2 课程详情：面包屑/返回入口/相关课程/正文完整 */
+  const cd = await call("/library/st3-free-a/");
+  assert.equal(cd.res.status, 200);
+  assert.ok(cd.text.includes('<a href="/courses/">免费课程</a>'), "面包屑必须可返回免费课程列表");
+  assert.ok(cd.text.includes('href="/courses/">← 返回免费课程'), "页尾必须有返回免费课程入口");
+  assert.ok(cd.text.includes("继续学习") && cd.text.includes("/library/st3-free-b/"), "同类免费课程应作为相关课程推荐");
+  assert.doesNotMatch(cd.text, /子任务三会员课/, "相关推荐不得混入会员课程");
+  assert.ok(cd.text.includes("这是完整正文段落"), "免费课程正文必须完整展示，不得截断");
+  assert.ok(cd.text.includes('class="table-wrap"'), "表格必须包裹滚动容器以适配手机端");
+  assert.ok(cd.text.includes("<pre"), "代码块必须保留渲染");
+  pass("课程详情：面包屑、返回入口、相关免费课程、正文完整");
+
+  /* 36.3 权限隔离：草稿/下架/会员课程 */
+  const draftDetail = await call("/library/st3-draft/");
+  assert.equal(draftDetail.res.status, 404, "草稿课程详情必须 404");
+  db.prepare("UPDATE contents SET status='archived' WHERE slug='st3-draft'").run();
+  const archivedDetail = await call("/library/st3-draft/");
+  assert.equal(archivedDetail.res.status, 404, "下架课程详情必须 404");
+  const memberAnon = await call("/library/st3-member/");
+  assert.equal(memberAnon.res.status, 302, "匿名访问会员课程必须跳转登录");
+  assert.match(memberAnon.res.headers.get("Location") || "", /\/member\//);
+  const newMember = await call("/api/admin/members", {
+    method: "POST", cookie: adminCookie, body: { name: "子任务三学员", contact: "测试账号" },
+  });
+  assert.equal(newMember.res.status, 200, newMember.text);
+  const relogin = await call("/api/member/login", { method: "POST", body: { code: newMember.data.access_code } });
+  assert.equal(relogin.res.status, 200, relogin.text);
+  const cookie2 = setCookieToken(relogin.res);
+  const memberCourse = await call("/member/app/courses/st3-member/", { cookie: cookie2 });
+  assert.equal(memberCourse.res.status, 200, "合法会员应能按原权限访问会员课程");
+  pass("课程权限：草稿/下架 404、会员课匿名跳转、会员登录后可读");
+
+  /* 36.4 案例列表：卡片 CTA + 摘要 + 过滤 */
+  const casePub = await call("/api/admin/cases", {
+    method: "POST", cookie: adminCookie,
+    body: { title: "子任务三案例", slug: "st3-case", category: "家居", summary: "案例摘要文本", status: "published", body: "## 项目背景\n\n真实记录正文。", show_on_home: 1 },
+  });
+  assert.equal(casePub.res.status, 200, casePub.text);
+  const caseDraft = await call("/api/admin/cases", {
+    method: "POST", cookie: adminCookie,
+    body: { title: "子任务三草稿案例", slug: "st3-case-draft", status: "draft", body: "草稿", summary: "草稿摘要" },
+  });
+  assert.equal(caseDraft.res.status, 200, caseDraft.text);
+
+  const cs = await call("/cases/");
+  assert.equal(cs.res.status, 200);
+  assert.ok(cs.text.includes('class="case-card-go"'), "案例卡片必须有查看案例入口");
+  assert.ok(cs.text.includes("/cases/st3-case/"), "已发布案例必须出现在列表");
+  assert.ok(cs.text.includes("案例摘要文本"), "案例卡片必须展示真实摘要");
+  assert.doesNotMatch(cs.text, /子任务三草稿案例/, "草稿案例不得出现在案例列表");
+  pass("案例列表：卡片 CTA、摘要展示、草稿过滤");
+
+  /* 36.5 案例详情：简介展示 + 正文 + 返回 + 内部字段不泄漏 + 404 */
+  const cdetail = await call("/cases/st3-case/");
+  assert.equal(cdetail.res.status, 200);
+  assert.ok(cdetail.text.includes('class="case-detail-summary"') && cdetail.text.includes("案例摘要文本"), "案例详情必须展示案例介绍");
+  assert.ok(cdetail.text.includes("真实记录正文"), "案例正文必须正常渲染");
+  assert.ok(cdetail.text.includes('href="/cases/"'), "案例详情必须可返回列表");
+  for (const field of ["show_on_home", "sort_order", "deleted_at", "created_by"]) {
+    assert.ok(!cdetail.text.includes(field), `案例详情不得泄漏内部字段 ${field}`);
+  }
+  const missing = await call("/cases/not-exist-case/");
+  assert.equal(missing.res.status, 404, "不存在的案例必须 404");
+  const caseDraftDetail = await call("/cases/st3-case-draft/");
+  assert.equal(caseDraftDetail.res.status, 404, "未发布案例详情必须 404");
+  pass("案例详情：简介、正文、返回、内部字段不泄漏、404 正常");
+
+  /* 36.6 四类页面统一公共外壳且与首页一致（激活状态除外） */
+  const homeHtml = (await call("/")).text;
+  const homeHeader = homeHtml.match(/<header class="site-header">[\s\S]*?<\/header>/)[0];
+  const homeFooter = homeHtml.match(/<footer class="site-footer">[\s\S]*?<\/footer>/)[0];
+  const stripCurrent36 = (h) => h.replace(/ aria-current="page"/g, "");
+  for (const p of ["/courses/", "/library/st3-free-a/", "/cases/", "/cases/st3-case/"]) {
+    const r = await call(p);
+    assert.equal(r.res.status, 200, `${p} 必须可访问`);
+    const hm = r.text.match(/<header class="site-header">[\s\S]*?<\/header>/);
+    const fm = r.text.match(/<footer class="site-footer">[\s\S]*?<\/footer>/);
+    assert.ok(hm && fm, `${p} 必须包含公共页头页脚`);
+    assert.equal(stripCurrent36(hm[0]), stripCurrent36(homeHeader), `${p} 页头必须与首页完全一致（不含激活状态）`);
+    assert.equal(fm[0], homeFooter, `${p} 页脚必须与首页完全一致`);
+    assert.equal(count(r.text, /aria-current="page"/g), 1, `${p} 必须恰好一个激活导航项`);
+    assert.equal(count(r.text, /<main/g), 1, `${p} 只能有一个 main`);
+  }
+  pass("课程/案例列表与详情页统一使用公共页头页脚，激活状态正确");
+
+  /* 36.7 空状态：无已发布案例时显示空态 */
+  const backup = db.prepare("SELECT id, status FROM cases").all();
+  db.prepare("UPDATE cases SET status = 'draft'").run();
+  const emptyCs = await call("/cases/");
+  assert.equal(emptyCs.res.status, 200);
+  assert.ok(emptyCs.text.includes('data-copy="public.cases.empty.title"'), "无案例时必须显示空状态");
+  assert.equal(count(emptyCs.text, /class="case-card"/g), 0, "空状态不得渲染案例卡片");
+  for (const row of backup) {
+    db.prepare("UPDATE cases SET status = ? WHERE id = ?").run(row.status, row.id);
+  }
+  pass("空案例列表正常显示空状态");
+}
+
+/* ---------------- 37. 第三阶段子任务4：全站外壳、导航页脚与两级动态成长路线 ---------------- */
+{
+  const count = (s, re) => (s.match(re) || []).length;
+  const workerSrc = readFileSync(join(root, "public", "_worker.js"), "utf8");
+
+  /* 37.1 唯一公共外壳：全站只有一个 publicShell 实现，片段页不含重复页头页脚 */
+  assert.equal(count(workerSrc, /function publicShell\(/g), 1, "全站只能有一个 publicShell 实现");
+  for (const name of ["home.html", "about.html", "coaching.html"]) {
+    const src = readFileSync(join(root, "public", "partials", name), "utf8");
+    for (const forbidden of ["site-header", "site-footer", "<header", "<footer"]) {
+      assert.ok(!src.includes(forbidden), `${name} 不得包含重复页头页脚（${forbidden}）`);
+    }
+  }
+  pass("全站唯一 publicShell 渲染入口，公开片段不含重复页头页脚");
+
+  /* 37.2 所有公开页面恰好一个公共页头、页脚、main */
+  const publicPages = [
+    "/", "/about/", "/coaching/", "/courses/", "/cases/",
+    "/guide/", "/products/", "/build/", "/marketing/",
+    "/library/st3-free-a/", "/cases/st3-case/",
+    "/guide/90-day-roadmap.html", "/products/validation.html",
+    "/build/shopify-day-one.html", "/marketing/first-ad.html",
+  ];
+  for (const p of publicPages) {
+    const r = await call(p);
+    assert.equal(r.res.status, 200, `${p} 必须可访问`);
+    assert.equal(count(r.text, /<header class="site-header">/g), 1, `${p} 必须恰好一个公共页头`);
+    assert.equal(count(r.text, /<footer class="site-footer">/g), 1, `${p} 必须恰好一个公共页脚`);
+    assert.equal(count(r.text, /<main/g), 1, `${p} 必须恰好一个 main`);
+    assert.ok(r.text.includes('<a class="brand" href="/" aria-label="独立站春哥 首页">'), `${p} 品牌标识必须回到首页`);
+  }
+  for (const p of ["/library/not-exist-course/", "/cases/not-exist-case/"]) {
+    const r = await call(p);
+    assert.equal(r.res.status, 404, `${p} 必须返回 404`);
+    assert.equal(count(r.text, /<header class="site-header">/g), 1, `${p} 的 404 页面同样必须使用公共外壳`);
+    assert.equal(count(r.text, /<footer class="site-footer">/g), 1, `${p} 的 404 页面同样必须使用公共外壳`);
+  }
+  pass("全部公开页面（含静态文章与 404）统一使用公共页头页脚");
+
+  /* 37.3 页头导航：栏目顺序、链接、激活状态 */
+  const homeHtml = (await call("/")).text;
+  const navBlock = homeHtml.match(/<nav class="nav" aria-label="主导航">[\s\S]*?<\/nav>/)[0];
+  const navHrefs = [...navBlock.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(navHrefs, ["/", "/courses/", "/#roadmap", "/about/", "/coaching/", "/cases/"], "导航栏目顺序不得改变");
+  for (const label of ["首页", "免费课程", "成长路线", "关于春哥", "一对一带教", "学员案例"]) {
+    assert.ok(navBlock.includes(label), `导航必须包含栏目：${label}`);
+  }
+  assert.equal(count(navBlock, /aria-current="page"/g), 1, "首页必须恰好一个激活项");
+  assert.ok(homeHtml.includes('id="roadmap"'), "首页必须存在成长路线锚点 #roadmap");
+  assert.ok(navBlock.includes('href="/member/"') === false, "登录入口不属于主导航栏目");
+  assert.ok(homeHtml.includes('<a class="btn btn-dark btn-sm header-cta" href="/member/">'), "页头登录入口必须保留");
+
+  const expectedCurrent = {
+    "/": "/",
+    "/courses/": "/courses/",
+    "/library/st3-free-a/": "/courses/",
+    "/cases/": "/cases/",
+    "/cases/st3-case/": "/cases/",
+    "/about/": "/about/",
+    "/coaching/": "/coaching/",
+  };
+  for (const [p, href] of Object.entries(expectedCurrent)) {
+    const r = await call(p);
+    const hits = [...r.text.matchAll(/<a href="([^"]+)" aria-current="page">/g)].map((m) => m[1]);
+    assert.deepEqual(hits, [href], `${p} 的激活导航项必须是 ${href}，且只能有一个`);
+  }
+  const articleHtml = (await call("/guide/90-day-roadmap.html")).text;
+  assert.equal(count(articleHtml, /aria-current="page"/g), 0, "静态知识文章不属于主导航栏目，不得错误激活");
+  pass("页头导航顺序、链接、/#roadmap 锚点与当前页激活状态正确");
+
+  /* 37.4 页脚：内容一致、链接可达、真实微信号、无假二维码 */
+  const footerBlock = homeHtml.match(/<footer class="site-footer">[\s\S]*?<\/footer>/)[0];
+  assert.ok(footerBlock.includes("ch022427"), "页脚必须使用真实微信号 ch022427");
+  assert.ok(!footerBlock.includes("二维码"), "页脚不得出现二维码字样");
+  assert.ok(!footerBlock.includes("<img"), "页脚不得生成任何虚假二维码图片");
+  const footerHrefs = [...new Set([...footerBlock.matchAll(/<a href="([^"]+)"/g)].map((m) => m[1]))];
+  assert.ok(footerHrefs.length >= 8, "页脚必须包含完整栏目链接");
+  for (const href of footerHrefs) {
+    if (href.startsWith("/#")) {
+      assert.ok(homeHtml.includes(`id="${href.slice(2)}"`), `页脚锚点 ${href} 必须在首页存在`);
+    } else {
+      const r = await call(href);
+      assert.ok([200, 302, 308].includes(r.res.status), `页脚链接 ${href} 必须可达，实际 ${r.res.status}`);
+    }
+  }
+  for (const p of ["/about/", "/coaching/", "/courses/", "/cases/"]) {
+    const r = await call(p);
+    const fm = r.text.match(/<footer class="site-footer">[\s\S]*?<\/footer>/)[0];
+    assert.equal(fm, footerBlock, `${p} 页脚必须与首页完全一致`);
+  }
+  pass("页脚全站一致、链接可达、真实微信号、无虚假二维码");
+
+  /* 37.5 登录页保留侧栏式专有视觉，不被公共外壳覆盖 */
+  const loginPage = await call("/member/");
+  assert.equal(loginPage.res.status, 200);
+  assert.ok(loginPage.text.includes('class="login-shell"') && loginPage.text.includes('class="login-aside"'), "登录页必须保留侧栏式专有结构");
+  assert.ok(!loginPage.text.includes("site-header") && !loginPage.text.includes("site-footer"), "登录页不得被公共页头页脚覆盖");
+  pass("登录页专有视觉结构未被统一外壳破坏");
+
+  /* 37.6 会员工具页保留 t-bar 独立视觉，不套用公开网站页头页脚 */
+  const toolMember = await call("/api/admin/members", {
+    method: "POST", cookie: adminCookie, body: { name: "子任务四工具学员", contact: "工具页测试" },
+  });
+  assert.equal(toolMember.res.status, 200, toolMember.text);
+  const toolLogin = await call("/api/member/login", { method: "POST", body: { code: toolMember.data.access_code } });
+  assert.equal(toolLogin.res.status, 200, toolLogin.text);
+  const toolCookie = setCookieToken(toolLogin.res);
+  const anonymousTool = await call("/tools/pricing/");
+  assert.equal(anonymousTool.res.status, 302, "会员工具页匿名访问必须仍先跳转登录");
+  const toolPage = await call("/tools/pricing/", { cookie: toolCookie });
+  assert.equal(toolPage.res.status, 200);
+  assert.ok(toolPage.text.includes('class="t-bar"'), "会员工具页必须保留 t-bar 独立结构");
+  assert.ok(!toolPage.text.includes("site-header") && !toolPage.text.includes("site-footer"), "会员工具页不得套用公开网站页头页脚");
+  pass("t-bar 会员工具页保持独立视觉与既有鉴权");
+
+  /* 37.7 两级动态成长路线：A 3 阶段 / B 6 阶段 / C 2 与 8 条内容 / D 重新归类 / E 隐藏与空态 / F 恢复正式配置 */
+  const roadmapFile = join(root, "public", "data", "roadmap.json");
+  const officialRaw = readFileSync(roadmapFile, "utf8");
+  const officialData = JSON.parse(officialRaw);
+  const originalAssetsFetch = env.ASSETS.fetch;
+  let roadmapOverride = null;
+  env.ASSETS.fetch = async (request) => {
+    if (roadmapOverride && new URL(request.url).pathname === "/data/roadmap.json") {
+      return new Response(JSON.stringify(roadmapOverride), { status: 200, headers: { "Content-Type": "application/json; charset=utf-8" } });
+    }
+    return originalAssetsFetch(request);
+  };
+
+  const renderHome = async (data) => {
+    roadmapOverride = data;
+    const r = await call("/");
+    assert.equal(r.res.status, 200, "首页必须可访问");
+    const m = r.text.match(/<ol class="roadmap">[\s\S]*?<\/ol>/);
+    return { html: r.text, region: m ? m[0] : "" };
+  };
+  const stagesOf = (region) => region.split('<li class="roadmap-stage reveal">').slice(1);
+  const namesOf = (region) => [...region.matchAll(/<h3>([^<]*)<\/h3>/g)].map((m) => m[1]);
+  const numsOf = (region) => [...region.matchAll(/<span class="roadmap-num">([^<]*)<\/span>/g)].map((m) => m[1]);
+  const mkStage = (name, order, topics, extra = {}) => ({ id: "test-" + order, name, summary: name + "简介", order, visible: true, topics, ...extra });
+  const mkTopic = (name, order, extra = {}) => ({ id: "test-t-" + order, name, description: name + "说明", order, visible: true, ...extra });
+
+  /* A. 阶段数量 5 → 3 */
+  const dataA = {
+    version: 1, updated_at: "2026-11-08",
+    stages: [
+      mkStage("测试阶段甲", 1, [mkTopic("测试内容一", 1)]),
+      mkStage("测试阶段乙", 2, [mkTopic("测试内容二", 1)]),
+      mkStage("测试阶段丙", 3, [mkTopic("测试内容三", 1)]),
+    ],
+  };
+  const homeA = await renderHome(dataA);
+  assert.equal(count(homeA.region, /class="roadmap-stage reveal"/g), 3, "3 阶段配置必须只渲染 3 个阶段");
+  assert.deepEqual(numsOf(homeA.region), ["01", "02", "03"], "阶段编号必须从 01 连续排列");
+  assert.deepEqual(namesOf(homeA.region), ["测试阶段甲", "测试阶段乙", "测试阶段丙"], "阶段名称与顺序必须正确");
+  assert.ok(homeA.region.includes("测试阶段乙简介"), "阶段介绍必须正常展示");
+  for (const s of officialData.stages) {
+    assert.ok(!homeA.region.includes(s.name), `不得残留正式配置中的阶段：${s.name}`);
+  }
+  pass("成长路线 A：5→3 阶段只渲染 3 个，编号/名称/介绍正确且无残留");
+
+  /* B. 阶段数量 5 → 6（order 乱序验证排序） */
+  const dataB = {
+    version: 1,
+    stages: [
+      mkStage("测试阶段一", 3, [mkTopic("测试内容一", 1)]),
+      mkStage("测试阶段二", 1, [mkTopic("测试内容二", 1)]),
+      mkStage("测试阶段三", 5, [mkTopic("测试内容三", 1)]),
+      mkStage("测试阶段四", 2, [mkTopic("测试内容四", 1)]),
+      mkStage("测试阶段五", 6, [mkTopic("测试内容五", 1)]),
+      mkStage("测试阶段六", 4, [mkTopic("测试内容六", 1)]),
+    ],
+  };
+  const homeB = await renderHome(dataB);
+  assert.equal(count(homeB.region, /class="roadmap-stage reveal"/g), 6, "6 阶段配置必须渲染 6 个阶段");
+  assert.deepEqual(numsOf(homeB.region), ["01", "02", "03", "04", "05", "06"], "新增阶段必须自动编号");
+  assert.deepEqual(
+    namesOf(homeB.region),
+    ["测试阶段二", "测试阶段四", "测试阶段一", "测试阶段六", "测试阶段三", "测试阶段五"],
+    "阶段必须按 order 排序渲染"
+  );
+  pass("成长路线 B：6 阶段自动显示，编号连续且按 order 排序");
+
+  /* C. 阶段内部内容数量 2 条与 8 条 */
+  const topics2 = [mkTopic("测试内容一", 1), mkTopic("测试内容二", 2)];
+  const homeC2 = await renderHome({ version: 1, stages: [mkStage("测试内容数量", 1, topics2)] });
+  assert.equal(count(homeC2.region, /class="roadmap-topic"/g), 2, "内部内容 2 条时必须只显示 2 条");
+  const topics8 = Array.from({ length: 8 }, (_, i) => mkTopic(`测试内容${i + 1}`, i + 1));
+  const homeC8 = await renderHome({ version: 1, stages: [mkStage("测试内容数量", 1, topics8)] });
+  assert.equal(count(homeC8.region, /class="roadmap-topic"/g), 8, "内部内容 8 条时必须完整显示 8 条");
+  for (const t of topics8) {
+    assert.ok(homeC8.region.includes(`<b>${t.name}</b>`) && homeC8.region.includes(`${t.name}说明`), `第 ${t.order} 条内容必须完整展示`);
+  }
+  pass("成长路线 C：阶段内部内容 2 条与 8 条均可动态渲染，无数量上限");
+
+  /* D. 内部内容重新归类 */
+  const baseA = mkStage("测试阶段甲", 1, [mkTopic("待归类内容", 1), mkTopic("测试内容二", 2)]);
+  const baseB = mkStage("测试阶段乙", 2, [mkTopic("测试内容三", 1)]);
+  const homeD0 = await renderHome({ version: 1, stages: [baseA, baseB] });
+  assert.equal(count(homeD0.region, /<b>待归类内容<\/b>/g), 1, "归类前内容只能出现一次");
+  const secA0 = stagesOf(homeD0.region).find((s) => s.includes("<h3>测试阶段甲</h3>"));
+  assert.ok(secA0.includes("<b>待归类内容</b>"), "归类前内容应位于原阶段");
+
+  const movedB = mkStage("测试阶段乙", 2, [mkTopic("测试内容三", 1), mkTopic("待归类内容", 2)]);
+  const shrunkA = mkStage("测试阶段甲", 1, [mkTopic("测试内容二", 1)]);
+  const homeD = await renderHome({ version: 1, stages: [shrunkA, movedB] });
+  const secA = stagesOf(homeD.region).find((s) => s.includes("<h3>测试阶段甲</h3>"));
+  const secB = stagesOf(homeD.region).find((s) => s.includes("<h3>测试阶段乙</h3>"));
+  assert.equal(count(homeD.region, /<b>待归类内容<\/b>/g), 1, "归类后内容仍只能出现一次");
+  assert.ok(!secA.includes("待归类内容"), "原阶段不得再显示该内容");
+  assert.ok(secB.includes("<b>待归类内容</b>") && secB.includes("待归类内容说明"), "内容必须出现在新阶段且说明字段完整");
+  assert.ok(secB.indexOf("<b>测试内容三</b>") < secB.indexOf("<b>待归类内容</b>"), "新阶段内部必须按 order 排序");
+  pass("成长路线 D：内容重新归类后只在新阶段显示，原阶段移除，排序与字段正常");
+
+  /* E. 隐藏阶段 / 隐藏内容 / 空内容阶段 / 全隐藏空态 */
+  const dataE = {
+    version: 1,
+    stages: [
+      mkStage("可见阶段", 1, [mkTopic("可见内容", 1), mkTopic("隐藏内容", 2, { visible: false })]),
+      mkStage("隐藏阶段", 2, [mkTopic("隐藏阶段内容", 1)], { visible: false }),
+      mkStage("空内容阶段", 3, []),
+    ],
+  };
+  const homeE = await renderHome(dataE);
+  assert.equal(count(homeE.region, /class="roadmap-stage reveal"/g), 2, "隐藏阶段不得展示");
+  assert.deepEqual(namesOf(homeE.region), ["可见阶段", "空内容阶段"], "隐藏阶段必须被过滤");
+  assert.ok(!homeE.region.includes("隐藏阶段内容"), "隐藏阶段内部内容不得展示");
+  assert.ok(!homeE.region.includes("<b>隐藏内容</b>"), "隐藏内部内容不得展示");
+  const emptySec = stagesOf(homeE.region).find((s) => s.includes("<h3>空内容阶段</h3>"));
+  assert.ok(!emptySec.includes("roadmap-topics"), "无可见内部内容的阶段不得渲染空列表");
+  const homeE2 = await renderHome({ version: 1, stages: [mkStage("隐藏阶段", 1, [mkTopic("隐藏内容", 1)], { visible: false })] });
+  assert.ok(homeE2.html.includes("成长路线整理中"), "所有阶段不可见时必须显示空状态");
+  assert.equal(count(homeE2.region, /class="roadmap-stage reveal"/g), 0, "全隐藏时不得渲染任何阶段");
+  pass("成长路线 E：隐藏阶段/内容不展示，无内容阶段不渲染列表，全隐藏显示空状态");
+
+  /* F. 恢复正式配置并逐项比对 */
+  roadmapOverride = null;
+  env.ASSETS.fetch = originalAssetsFetch;
+  assert.equal(readFileSync(roadmapFile, "utf8"), officialRaw, "动态测试后正式 roadmap.json 必须逐字节一致");
+  const homeF = await call("/");
+  const regionF = (homeF.text.match(/<ol class="roadmap">[\s\S]*?<\/ol>/) || [""])[0];
+  assert.equal(count(regionF, /class="roadmap-stage reveal"/g), officialData.stages.length, "正式阶段数量必须恢复");
+  assert.deepEqual(namesOf(regionF), officialData.stages.map((s) => s.name), "正式阶段名称与顺序必须完全恢复");
+  assert.deepEqual(numsOf(regionF), officialData.stages.map((_, i) => String(i + 1).padStart(2, "0")), "正式阶段编号必须完全恢复");
+  const officialTopicCount = officialData.stages.reduce((n, s) => n + s.topics.filter((t) => t.visible !== false).length, 0);
+  assert.equal(count(regionF, /class="roadmap-topic"/g), officialTopicCount, "正式内部内容数量必须完全恢复");
+  assert.ok(!regionF.includes("测试阶段") && !regionF.includes("测试内容"), "不得残留任何临时测试阶段或内容");
+  pass(`成长路线 F：正式配置已完整恢复（${officialData.stages.length} 阶段 / ${officialTopicCount} 条内容），无临时数据残留`);
+}
+
+/* ---------------- 38. 首页成长路线阶段 VIP 会员标记 ---------------- */
+{
+  const { renderRoadmapStages } = await import(pathToFileURL(join(root, "public", "_worker.js")).href);
+  const count = (s, re) => (s.match(re) || []).length;
+  const mkStage = (name, order, topics, extra = {}) => ({ id: "vip-" + order, name, summary: name + "简介", order, visible: true, topics, ...extra });
+  const mkTopic = (name, order, extra = {}) => ({ id: "vip-t-" + order, name, description: name + "说明", order, visible: true, ...extra });
+
+  /* 38.1 当前 5 个阶段全部显示 VIP 会员标记，且复用工具卡片既有徽标样式 */
+  const homeHtml = (await call("/")).text;
+  const region = homeHtml.match(/<ol class="roadmap">[\s\S]*?<\/ol>/)[0];
+  const sections = region.split('<li class="roadmap-stage reveal">').slice(1);
+  assert.equal(sections.length, 5, "正式配置应有 5 个阶段");
+  assert.equal(count(region, /class="tool-badge vip roadmap-vip"/g), 5, "每个阶段卡片必须恰好一个 VIP 标记");
+  for (const sec of sections) {
+    assert.equal(count(sec, /class="tool-badge vip roadmap-vip"/g), 1, "阶段卡片缺少 VIP 标记");
+    assert.ok(sec.includes("VIP 会员"), "VIP 标记文案必须为 VIP 会员");
+  }
+  const css = readFileSync(join(root, "public/assets/css/style.css"), "utf8");
+  const vipRule = css.match(/\.roadmap-stage \.roadmap-vip \{[\s\S]*?\}/);
+  assert.ok(vipRule, "必须存在成长路线 VIP 标记的布局覆盖规则");
+  assert.ok(
+    !vipRule[0].includes("background") && !vipRule[0].includes("border-radius") && !vipRule[0].includes("font-size") && !vipRule[0].includes("padding"),
+    "VIP 标记不得另建一套视觉样式，只能复用 .tool-badge.vip 的背景/颜色/字号/圆角/内边距"
+  );
+  pass("首页 5 个阶段卡片均显示 VIP 会员标记，样式复用工具卡片既有徽标");
+
+  /* 38.2 动态新增阶段自动显示标记，不影响阶段内部内容 */
+  const data6 = {
+    version: 1,
+    stages: [
+      mkStage("测试阶段一", 1, [mkTopic("测试内容一", 1), mkTopic("测试内容二", 2)]),
+      mkStage("测试阶段二", 2, [mkTopic("测试内容三", 1)]),
+      mkStage("测试阶段三", 3, []),
+      mkStage("测试阶段四", 4, [mkTopic("测试内容四", 1)]),
+      mkStage("测试阶段五", 5, [mkTopic("测试内容五", 1)]),
+      mkStage("测试阶段六", 6, [mkTopic("测试内容六", 1)]),
+    ],
+  };
+  const html6 = renderRoadmapStages(data6);
+  assert.equal(count(html6, /class="tool-badge vip roadmap-vip"/g), 6, "新增第 6 阶段后必须自动显示 6 个 VIP 标记");
+  assert.equal(count(html6, /class="roadmap-stage reveal"/g), 6, "阶段卡片数量必须同步为 6");
+  assert.equal(count(html6, /class="roadmap-topic"/g), 6, "阶段内部内容数量不受 VIP 标记影响");
+  assert.deepEqual([...html6.matchAll(/<span class="roadmap-num">([^<]*)<\/span>/g)].map((m) => m[1]), ["01", "02", "03", "04", "05", "06"]);
+  pass("动态新增阶段自动显示 VIP 标记，编号与内部内容不受影响");
+
+  /* 38.3 隐藏阶段不显示卡片及标记 */
+  const hiddenHtml = renderRoadmapStages({
+    version: 1,
+    stages: [
+      mkStage("可见阶段", 1, [mkTopic("可见内容", 1)]),
+      mkStage("隐藏阶段", 2, [mkTopic("隐藏内容", 1)], { visible: false }),
+    ],
+  });
+  assert.equal(count(hiddenHtml, /class="roadmap-stage reveal"/g), 1, "隐藏阶段不得渲染卡片");
+  assert.equal(count(hiddenHtml, /class="tool-badge vip roadmap-vip"/g), 1, "隐藏阶段不得渲染 VIP 标记");
+  assert.ok(!hiddenHtml.includes("隐藏阶段"), "隐藏阶段的名称不得出现");
+  pass("隐藏阶段的卡片与 VIP 标记均不展示");
+
+  /* 38.4 空状态不出现 VIP 标记 */
+  const emptyHtml = renderRoadmapStages({ version: 1, stages: [mkStage("隐藏阶段", 1, [], { visible: false })] });
+  assert.ok(emptyHtml.includes("成长路线整理中"), "所有阶段不可见时必须显示空状态");
+  assert.equal(count(emptyHtml, /roadmap-vip/g), 0, "空状态下不得出现 VIP 标记");
+  pass("成长路线空状态不出现 VIP 标记");
 }
 
 await Promise.all(pending);
