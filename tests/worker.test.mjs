@@ -1963,7 +1963,7 @@ let memberCookie = "";
 {
   const adminContent = await call("/admin/content/", { cookie: adminCookie });
   assert.equal(adminContent.res.status, 200);
-  assert.match(adminContent.text, /href="\/admin\/categories\/"/, "必须保留独立的分类管理入口");
+  assert.doesNotMatch(adminContent.text, /href="\/admin\/categories\/"/, "第二阶段起课程管理页不得再出现分类管理入口链接");
   assert.doesNotMatch(adminContent.text, /content-group-toggle/, "不得再有“按分类分组”勾选框");
   assert.doesNotMatch(adminContent.text, /category-panel/, "不得再有分类管理展开面板");
   assert.doesNotMatch(adminContent.text, /按分类分组/, "不得再有分组切换文案");
@@ -2063,6 +2063,42 @@ let memberCookie = "";
   assert.match(adminJs, /门课程/, "每个分类必须显示该分类课程数量");
   assert.match(adminJs, /category_sort_order/, "分组排序必须遵循后台 sort_order");
   pass("课程列表固定按分类分组并显示分类名称与课程数量");
+}
+
+/* ---------------- 34. 第二阶段：后台精简为 7 个可见板块 ---------------- */
+{
+  const adminHome = await call("/admin/", { cookie: adminCookie });
+  assert.equal(adminHome.res.status, 200);
+  const navMatch = adminHome.text.match(/<nav class="a-nav"[^>]*>([\s\S]*?)<\/nav>/);
+  assert.ok(navMatch, "后台页面必须包含导航");
+  const navHtml = navMatch[1];
+  const navLinks = navHtml.match(/<a class="/g) || [];
+  assert.equal(navLinks.length, 7, "后台导航必须恰好 7 个板块");
+  for (const label of ["概览", "会员管理", "课程管理", "工具管理", "案例管理", "网站设置", "操作日志"]) {
+    assert.ok(navHtml.includes(label), `导航必须包含「${label}」`);
+  }
+  assert.ok(!navHtml.includes("/admin/categories/"), "导航不得包含课程分类入口");
+  assert.ok(!navHtml.includes("/admin/resources/"), "导航不得包含资料管理入口");
+  assert.ok(!adminHome.text.includes('href="/admin/resources/"'), "概览页不得保留资料管理快捷入口");
+  pass("后台导航精简为 7 个板块：无课程分类与资料管理入口");
+
+  // 隐藏入口但保留页面路由与 API，直接访问仍可用（保护分类数据与资料下载链路）
+  for (const p of ["/admin/categories/", "/admin/resources/"]) {
+    const hiddenPage = await call(p, { cookie: adminCookie });
+    assert.equal(hiddenPage.res.status, 200, `${p} 隐藏后必须仍可直接访问`);
+  }
+  const catApi = await call("/api/admin/categories", { cookie: adminCookie });
+  assert.equal(catApi.res.status, 200, "分类接口必须保留");
+  const resApi = await call("/api/admin/resources", { cookie: adminCookie });
+  assert.equal(resApi.res.status, 200, "资料接口必须保留");
+  pass("课程分类与资料管理的页面路由及 API 全部保留可用");
+
+  // 课程表单包含前台可见性提示，且前端联动逻辑存在
+  const contentPage = await call("/admin/content/", { cookie: adminCookie });
+  assert.match(contentPage.text, /id="content-visibility-hint"/, "课程表单必须包含前台可见性提示元素");
+  const adminJsPhase2 = readFileSync(join(root, "public", "assets", "js", "admin.js"), "utf8");
+  assert.match(adminJsPhase2, /syncContentVisibilityHint/, "admin.js 必须包含可见性提示联动逻辑");
+  pass("课程表单提供免费公开/VIP 权限的前台可见性提示");
 }
 
 await Promise.all(pending);

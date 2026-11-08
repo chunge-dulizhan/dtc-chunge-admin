@@ -1527,12 +1527,11 @@ function adminAuthPage({ needsSetup }) {
 }
 
 function adminShell({ title, active, admin, page, body }) {
+  // 第二阶段：隐藏「课程分类」「资料管理」入口（页面路由与 API 保留，仅不出现在导航）
   const nav = [
     ["overview", "/admin/", "概览"],
     ["members", "/admin/members/", "会员管理"],
     ["content", "/admin/content/", "课程管理"],
-    ["categories", "/admin/categories/", "课程分类"],
-    ["resources", "/admin/resources/", "资料管理"],
     ["tools", "/admin/tools/", "工具管理"],
     ["cases", "/admin/cases/", "案例管理"],
     ["settings", "/admin/settings/", "网站设置"],
@@ -1608,8 +1607,7 @@ function adminOverviewBody() {
     <div class="a-panel-head"><h2>常用操作</h2></div>
     <div class="a-panel-body a-quick">
       <a href="/admin/members/"><b>添加会员</b><span>生成会员编号与专属访问码</span></a>
-      <a href="/admin/content/"><b>写一篇课程</b><span>Markdown 编辑，可存草稿或发布</span></a>
-      <a href="/admin/resources/"><b>添加资料</b><span>登记文件信息，第五轮接入 R2 上传</span></a>
+      <a href="/admin/content/"><b>写一篇课程</b><span>支持图文与章节，可存草稿或发布</span></a>
       <a href="/admin/audit/"><b>查看安全日志</b><span>登录、重置访问码与内容操作记录</span></a>
     </div>
   </section>
@@ -1705,7 +1703,6 @@ function adminContentBody() {
   </select>
   <button class="btn btn-ghost btn-sm" type="button" id="content-search-btn">筛选</button>
   <div class="a-toolbar-spacer"></div>
-  <a class="btn btn-ghost btn-sm" href="/admin/categories/">课程分类管理</a>
   <span class="a-hint">支持 Markdown / 富文本，章节类型可分多章</span>
 </div>
 
@@ -1736,6 +1733,7 @@ function adminContentBody() {
       <label class="a-field"><span>状态</span><select name="status"><option value="draft">草稿</option><option value="published">发布</option><option value="archived">下架</option></select></label>
       <label class="a-field"><span>排序（越小越靠前）</span><input name="sort_order" type="number" min="0" max="9999" value="0"></label>
     </div>
+    <p class="a-hint" id="content-visibility-hint" role="note"></p>
     <div class="a-field">
       <span>封面图</span>
       <div class="a-cover-row">

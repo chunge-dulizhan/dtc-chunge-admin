@@ -787,6 +787,7 @@
         renderChapters();
         syncContentCoverPreview();
         syncContentBodyPreview();
+        syncContentVisibilityHint();
         dialog.showModal();
       })
       .catch(function (err) {
@@ -813,6 +814,26 @@
     } else {
       if (rt) rt.innerHTML = body || "";
       if (ta) ta.value = "";
+    }
+  }
+
+  // 根据「权限 + 状态」组合提示课程在前台的可见性，避免免费课程误存为草稿后前台找不到
+  function syncContentVisibilityHint() {
+    var form = $("#content-form");
+    var hint = $("#content-visibility-hint");
+    if (!form || !hint) return;
+    var level = form.elements.access_level.value;
+    var status = form.elements.status.value;
+    if (level === "free") {
+      hint.textContent =
+        status === "published"
+          ? "免费公开：所有访客无需登录即可在公开站课程列表与详情页访问。"
+          : "注意：已选「免费公开」，但状态不是「发布」，公开站与会员中心都不会显示。状态改为「发布」后立即对访客可见。";
+    } else {
+      hint.textContent =
+        status === "published"
+          ? "会员专属：公开站不显示，仅 VIP 会员登录后在会员中心可见。"
+          : "会员专属：仅 VIP 会员可见；当前状态不是「发布」，会员中心也暂时不显示。";
     }
   }
 
@@ -1002,6 +1023,12 @@
     if (contentTypeSelect) {
       contentTypeSelect.addEventListener("change", applyContentTypeUI);
     }
+
+    // 权限 / 状态变化时刷新前台可见性提示
+    ["access_level", "status"].forEach(function (name) {
+      var el = form.elements[name];
+      if (el) el.addEventListener("change", syncContentVisibilityHint);
+    });
 
     // 添加章节
     var addChapterBtn = $("#chapter-add");
