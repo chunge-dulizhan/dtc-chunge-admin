@@ -1900,6 +1900,7 @@ a.case-card {
   font-size: 16px;
   line-height: 1.95;
   color: #262b31;
+  min-width: 0; /* 作为网格项时不被子元素（如 min-width:520px 的表格）撑破，让 .table-wrap 内部滚动 */
 }
 
 .prose > * + * {
@@ -2818,6 +2819,11 @@ body.login-page {
     font-size: 18px;
   }
 
+  /* 移动端：品牌链接扩大触控区域 */
+  .site-header .brand {
+    padding: 5px 0;
+  }
+
   .hero {
     padding-top: 56px;
   }
@@ -3016,6 +3022,17 @@ body.login-page {
     gap: 28px;
   }
 
+  /* 移动端：页脚链接扩大触控区域，避免点不中 */
+  .footer-col ul {
+    gap: 2px;
+  }
+
+  .footer-col a {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+  }
+
   .footer-bottom {
     flex-direction: column;
     align-items: flex-start;
@@ -3134,5 +3151,913 @@ body.login-page {
   .toc,
   .toast {
     display: none !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 19. 第三阶段：首页与公开页面新板块                                    */
+/* ------------------------------------------------------------------ */
+
+.section-kicker {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--orange-deep);
+  margin-bottom: 8px;
+}
+
+.home-section {
+  padding: 72px 0 8px;
+}
+
+.home-section .section-head {
+  margin-bottom: 28px;
+}
+
+.section-more {
+  margin-top: 22px;
+  text-align: center;
+}
+
+.home-empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  padding: 28px;
+  text-align: center;
+  background: #fff;
+}
+
+.home-empty h3 {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.home-empty p {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+/* 关于春哥（首页摘要 + 关于页） */
+
+.about-teaser {
+  max-width: 760px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px 30px;
+  box-shadow: 0 14px 40px -24px rgba(23, 24, 28, 0.25);
+}
+
+.about-teaser p {
+  font-size: 15px;
+  line-height: 1.9;
+  margin-bottom: 12px;
+}
+
+.about-note,
+.about-todo {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.about-todo {
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: rgba(255, 106, 61, 0.04);
+}
+
+.about-block {
+  margin-bottom: 40px;
+}
+
+.about-block h2 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 14px;
+  color: var(--ink);
+}
+
+.about-block p {
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+.about-list {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.about-list li {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  font-size: 14.5px;
+  line-height: 1.8;
+}
+
+.about-list li b {
+  color: var(--ink);
+}
+
+.about-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0 10px;
+}
+
+/* 独立站成长路线（两级动态结构：阶段数量与内部内容数量均自适应） */
+
+.roadmap {
+  list-style: none;
+  display: grid;
+  gap: 18px;
+  position: relative;
+}
+
+.roadmap-stage {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 20px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px 26px;
+  box-shadow: 0 18px 44px -30px rgba(23, 24, 28, 0.28);
+  position: relative;
+}
+
+.roadmap-stage-head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.roadmap-num {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(140deg, var(--orange), var(--orange-deep));
+  box-shadow: 0 10px 22px -10px rgba(230, 81, 0, 0.55);
+}
+
+.roadmap-stage-title h3 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+
+.roadmap-stage-title p {
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+/* 成长路线阶段 VIP 标记：复用工具卡片 .tool-badge.vip 的背景/颜色/字号/圆角/内边距，仅调整布局定位 */
+.roadmap-stage .roadmap-vip {
+  position: static;
+  top: auto;
+  right: auto;
+  flex: none;
+  margin-left: auto;
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
+.roadmap-topics {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+
+.roadmap-topic {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: rgba(23, 24, 28, 0.015);
+  display: grid;
+  gap: 4px;
+}
+
+.roadmap-topic b {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.roadmap-topic span {
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.roadmap-foot {
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* 一对一带教对比 */
+
+.coach-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.coach-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 26px 28px;
+  box-shadow: 0 18px 44px -32px rgba(23, 24, 28, 0.3);
+}
+
+.coach-card.accent {
+  border-color: var(--orange);
+  box-shadow: 0 22px 48px -26px rgba(230, 81, 0, 0.35);
+}
+
+.coach-card h3 {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.coach-card p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.8;
+  margin-bottom: 14px;
+}
+
+.coach-card ul {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.coach-card ul li {
+  position: relative;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.coach-card ul li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+
+.coach-cta {
+  margin-top: 22px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 免费知识库栏目卡 */
+
+.knowledge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.knowledge-card {
+  display: grid;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px;
+  text-decoration: none;
+  color: var(--ink);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.knowledge-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px -24px rgba(23, 24, 28, 0.35);
+}
+
+.knowledge-card b {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.knowledge-card span {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* 最新免费课程（动态） */
+
+.latest-block {
+  margin-top: 30px;
+}
+
+.latest-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.latest-head h3 {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.course-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.course-mini {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  text-decoration: none;
+  color: var(--ink);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.course-mini:hover {
+  border-color: var(--orange);
+  box-shadow: 0 14px 34px -24px rgba(230, 81, 0, 0.4);
+}
+
+.course-mini-cover {
+  flex: none;
+  width: 76px;
+  height: 56px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--orange-soft);
+}
+
+.course-mini-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.course-mini-body {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.course-mini-body b {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.course-mini-excerpt {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.course-mini-meta {
+  font-size: 11.5px;
+  color: var(--muted-2);
+  font-family: var(--font-mono);
+}
+
+/* 工具与学习资源（动态） */
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.tool-card {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 22px 22px 20px;
+  text-decoration: none;
+  color: var(--ink);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.tool-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px -24px rgba(23, 24, 28, 0.35);
+}
+
+.tool-card b {
+  font-size: 15.5px;
+  font-weight: 800;
+  padding-right: 64px;
+}
+
+.tool-intro {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.tool-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.tool-badge.free {
+  background: rgba(47, 158, 107, 0.12);
+  color: #2f9e6b;
+}
+
+.tool-badge.vip {
+  background: var(--orange-soft);
+  color: var(--orange-deep);
+}
+
+/* 常见问题 */
+
+.faq-list {
+  display: grid;
+  gap: 12px;
+  max-width: 820px;
+}
+
+.faq-list details {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.faq-list summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 18px 22px;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.faq-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-list summary::after {
+  content: "+";
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--orange-soft);
+  color: var(--orange-deep);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  transition: transform 0.2s ease;
+}
+
+.faq-list details[open] summary::after {
+  transform: rotate(45deg);
+}
+
+.faq-list details p {
+  padding: 0 22px 20px;
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--muted);
+}
+
+.faq-list details p a {
+  color: var(--orange-deep);
+}
+
+/* 微信咨询 */
+
+.wechat-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  background: linear-gradient(150deg, #1d1f26, #2b2f3a);
+  border-radius: 24px;
+  padding: 40px;
+  color: #f6f3ef;
+  box-shadow: 0 30px 60px -34px rgba(23, 24, 28, 0.6);
+}
+
+.wechat-panel .section-kicker {
+  color: var(--orange);
+}
+
+.wechat-panel h2 {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
+}
+
+.wechat-panel p {
+  font-size: 14.5px;
+  line-height: 1.9;
+  color: rgba(246, 243, 239, 0.75);
+  max-width: 560px;
+}
+
+.wechat-id-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 20px 0 10px;
+}
+
+.wechat-id {
+  font-size: 16px;
+}
+
+.wechat-id b {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+.wechat-hint {
+  font-size: 12.5px !important;
+  color: rgba(246, 243, 239, 0.5) !important;
+}
+
+.wechat-qr-slot {
+  border: 1px dashed rgba(246, 243, 239, 0.3);
+  border-radius: 16px;
+  padding: 24px;
+  font-size: 13px;
+  color: rgba(246, 243, 239, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 180px;
+}
+
+.wechat-qr-slot[hidden] {
+  display: none;
+}
+
+.wechat-qr-slot img {
+  max-width: 220px;
+  width: 100%;
+  border-radius: 12px;
+}
+
+/* 移动端导航分组分隔 */
+
+.mobile-nav-divider {
+  margin: 18px 24px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--muted-2);
+}
+
+/* 响应式：成长路线与微信面板 */
+
+@media (max-width: 860px) {
+  .home-section {
+    padding: 52px 0 4px;
+  }
+
+  .roadmap-stage {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .wechat-panel {
+    padding: 28px 22px;
+  }
+
+  .wechat-panel h2 {
+    font-size: 21px;
+  }
+
+  .about-teaser {
+    padding: 22px 20px;
+  }
+
+  .about-block h2 {
+    font-size: 19px;
+  }
+}
+
+/* ================================================================
+   20. 第三阶段：免费课程与案例页优化
+   ================================================================ */
+
+/* ---------- 免费课程列表 ---------- */
+.course-list-count {
+  margin-top: 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.course-list-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.course-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  overflow: hidden;
+  transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease), border-color 0.3s var(--ease);
+}
+
+.course-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.course-card-cover {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: linear-gradient(150deg, var(--ink-2) 0%, var(--ink) 78%);
+}
+
+.course-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.course-card-placeholder {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(245, 242, 234, 0.42);
+}
+
+.course-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  padding: 18px 20px 20px;
+}
+
+.course-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.course-card-title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+.course-card-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.78;
+}
+
+.course-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.course-card-go {
+  flex: none;
+  color: var(--orange-deep);
+  font-weight: 600;
+}
+
+/* ---------- 课程详情：相关免费课程 ---------- */
+.course-related {
+  margin-top: 36px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+
+.course-related-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.course-related-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.course-related-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  transition: border-color 0.25s var(--ease), transform 0.25s var(--ease);
+}
+
+.course-related-card:hover {
+  border-color: var(--orange);
+  transform: translateY(-2px);
+}
+
+.course-related-card h3 {
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.course-related-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.course-related-go {
+  margin-top: auto;
+  color: var(--orange-deep);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---------- 案例卡片跳转提示 ---------- */
+.case-card-go {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--orange-deep);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ---------- 案例详情：简介 ---------- */
+.case-detail-summary {
+  margin: 18px 0 20px;
+  padding-left: 14px;
+  border-left: 3px solid var(--orange);
+  color: var(--text-soft);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+/* ---------- 正文阅读体验补强（图片 / 代码） ---------- */
+.m-article-body img,
+.prose img {
+  max-width: 100%;
+  height: auto;
+}
+
+.prose pre {
+  margin: 1.4em 0;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--on-dark);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.prose code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--paper-2);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* ---------- 移动端 ---------- */
+@media (max-width: 860px) {
+  .course-list-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .course-card-cover {
+    aspect-ratio: 16 / 7;
+  }
+
+  .course-related-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .course-related {
+    margin-top: 30px;
+    padding-top: 24px;
+  }
+
+  .case-card-go {
+    margin-top: 14px;
+  }
+
+  .case-detail-summary {
+    margin: 16px 0 18px;
+    font-size: 14.5px;
+  }
+
+  .prose pre {
+    font-size: 12.5px;
+    padding: 14px 15px;
   }
 }

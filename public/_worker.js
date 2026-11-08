@@ -1335,7 +1335,28 @@ ${body}
 </html>`;
 }
 
-function publicShell({ title, description, body }) {
+function requestPath(request) {
+  return new URL(request.url).pathname;
+}
+
+/**
+ * 判断某个导航链接是否对应当前路径，用于统一渲染 aria-current。
+ * 详情页（/library/、/cases/）归入其所属列表栏目。
+ */
+function navCurrentAttr(href, path) {
+  if (!path) return "";
+  const p = path.split("?")[0].split("#")[0];
+  let hit = false;
+  if (href === "/") hit = p === "/" || p === "/index.html";
+  else if (href === "/courses/") hit = p === "/courses/" || p === "/library/" || p.startsWith("/library/");
+  else if (href === "/cases/") hit = p === "/cases/" || p.startsWith("/cases/");
+  else if (href === "/about/") hit = p === "/about/" || p === "/about";
+  else if (href === "/coaching/") hit = p === "/coaching/" || p === "/coaching";
+  else hit = p === href || p === href.replace(/\/$/, "");
+  return hit ? ' aria-current="page"' : "";
+}
+
+function publicShell({ title, description, body, bare = false, path = "" }) {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1360,13 +1381,12 @@ function publicShell({ title, description, body }) {
       </span>
     </a>
     <nav class="nav" aria-label="主导航">
-      <a href="/"><span data-copy="public.nav.home">首页</span></a>
-      <a href="/courses/"><span data-copy="public.nav.courses">免费课程</span></a>
-      <a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span></a>
-      <a href="/products/"><span data-copy="public.nav.products">选品知识库</span></a>
-      <a href="/build/"><span data-copy="public.nav.build">建站教程</span></a>
-      <a href="/marketing/"><span data-copy="public.nav.marketing">营销知识</span></a>
-      <a href="/cases/"><span data-copy="public.nav.cases">学员案例</span></a>
+      <a href="/"${navCurrentAttr("/", path)}><span data-copy="public.nav.home">首页</span></a>
+      <a href="/courses/"${navCurrentAttr("/courses/", path)}><span data-copy="public.nav.courses">免费课程</span></a>
+      <a href="/#roadmap"><span data-copy="public.nav.roadmap">成长路线</span></a>
+      <a href="/about/"${navCurrentAttr("/about/", path)}><span data-copy="public.nav.about">关于春哥</span></a>
+      <a href="/coaching/"${navCurrentAttr("/coaching/", path)}><span data-copy="public.nav.coaching">一对一带教</span></a>
+      <a href="/cases/"${navCurrentAttr("/cases/", path)}><span data-copy="public.nav.cases">学员案例</span></a>
     </nav>
     <a class="btn btn-dark btn-sm header-cta" href="/member/"><span data-copy="public.nav.member">会员中心</span></a>
     <button class="nav-toggle" type="button" aria-label="打开菜单" aria-expanded="false" aria-controls="mobile-nav">
@@ -1377,20 +1397,24 @@ function publicShell({ title, description, body }) {
 <div class="mobile-nav" id="mobile-nav">
   <a href="/"><span data-copy="public.nav.home">首页</span> <small>01</small></a>
   <a href="/courses/"><span data-copy="public.nav.courses">免费课程</span> <small>02</small></a>
-  <a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span> <small>03</small></a>
-  <a href="/products/"><span data-copy="public.nav.products">选品知识库</span> <small>04</small></a>
-  <a href="/build/"><span data-copy="public.nav.build">建站教程</span> <small>05</small></a>
-  <a href="/marketing/"><span data-copy="public.nav.marketing">营销知识</span> <small>06</small></a>
-  <a href="/cases/"><span data-copy="public.nav.cases">学员案例</span> <small>07</small></a>
+  <a href="/#roadmap"><span data-copy="public.nav.roadmap">成长路线</span> <small>03</small></a>
+  <a href="/about/"><span data-copy="public.nav.about">关于春哥</span> <small>04</small></a>
+  <a href="/coaching/"><span data-copy="public.nav.coaching">一对一带教</span> <small>05</small></a>
+  <a href="/cases/"><span data-copy="public.nav.cases">学员案例</span> <small>06</small></a>
+  <div class="mobile-nav-divider">免费知识库</div>
+  <a href="/guide/"><span data-copy="public.nav.guide">独立站入门</span> <small>07</small></a>
+  <a href="/products/"><span data-copy="public.nav.products">选品知识库</span> <small>08</small></a>
+  <a href="/build/"><span data-copy="public.nav.build">建站教程</span> <small>09</small></a>
+  <a href="/marketing/"><span data-copy="public.nav.marketing">营销知识</span> <small>10</small></a>
   <a class="btn btn-primary btn-block" href="/member/">进入会员中心</a>
   <p class="mobile-nav-foot">付费会员专享｜带教咨询微信 ch022427</p>
 </div>
-<main>
+<main>${bare ? body : `
   <div class="m-page">
     <div class="m-container">
 ${body}
     </div>
-  </div>
+  </div>`}
 </main>
 <footer class="site-footer">
   <div class="container">
@@ -1415,12 +1439,13 @@ ${body}
         </ul>
       </div>
       <div class="footer-col">
-        <h4>会员服务</h4>
+        <h4>服务</h4>
         <ul>
-          <li><a href="/member/"><span data-copy="public.nav.member">会员中心</span></a></li>
-          <li><a href="/#benefits">会员权益</a></li>
+          <li><a href="/#roadmap"><span data-copy="public.nav.roadmap">成长路线</span></a></li>
+          <li><a href="/coaching/"><span data-copy="public.nav.coaching">一对一带教</span></a></li>
+          <li><a href="/about/"><span data-copy="public.nav.about">关于春哥</span></a></li>
           <li><a href="/cases/"><span data-copy="public.nav.cases">学员案例</span></a></li>
-          <li><a href="/#knowledge">免费知识库</a></li>
+          <li><a href="/member/"><span data-copy="public.nav.member">会员中心</span></a></li>
         </ul>
       </div>
       <div class="footer-col">
@@ -3133,6 +3158,7 @@ async function handlePublicLibrary(request, env, ctx, url) {
       publicShell({
         title: "内容不存在",
         description: "内容不存在或尚未发布。",
+        path: requestPath(request),
         body: `<div class="m-page-head"><h1>内容不存在或尚未发布</h1><p>可以返回首页浏览免费知识库。</p></div><a class="btn btn-primary" href="/">返回首页</a>`,
       }),
       { status: 404, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS } }
@@ -3168,6 +3194,49 @@ async function handlePublicLibrary(request, env, ctx, url) {
         .join("")}</div></div>`
     : "";
 
+  // 相关免费课程：只取同类（栏目或分类）的已发布免费内容，最多 3 篇
+  let relatedRows = [];
+  {
+    const conds = [];
+    const args = [row.id];
+    if (row.nav_category) {
+      conds.push("nav_category = ?");
+      args.push(row.nav_category);
+    }
+    if (row.category_id !== null && row.category_id !== undefined) {
+      conds.push("category_id = ?");
+      args.push(row.category_id);
+    }
+    if (conds.length) {
+      relatedRows =
+        (
+          await env.DB.prepare(
+            `SELECT slug, title, excerpt FROM contents
+              WHERE status = 'published' AND access_level = 'free' AND id <> ?
+                AND (${conds.join(" OR ")})
+              ORDER BY sort_order ASC, COALESCE(published_at, created_at) DESC, id DESC
+              LIMIT 3`
+          )
+            .bind(...args)
+            .all()
+        ).results || [];
+    }
+  }
+  const relatedHtml = relatedRows.length
+    ? `<div class="course-related">
+    <h2 class="course-related-title">继续学习</h2>
+    <div class="course-related-grid">${relatedRows
+      .map(
+        (r) => `<a class="course-related-card" href="/library/${escapeHtml(r.slug)}/">
+      <h3>${escapeHtml(r.title)}</h3>
+      ${r.excerpt ? `<span class="course-related-desc">${escapeHtml(r.excerpt)}</span>` : ""}
+      <span class="course-related-go">免费阅读 →</span>
+    </a>`
+      )
+      .join("")}</div>
+  </div>`
+    : "";
+
   const isChapter = row.content_type === "chapter";
   let realChapters = [];
   if (isChapter) {
@@ -3195,7 +3264,7 @@ async function handlePublicLibrary(request, env, ctx, url) {
 <div class="m-article-layout">
   <div>
     <div class="m-crumb" style="margin-bottom:18px;">
-      <a href="/">首页</a><span>/</span><span>免费知识库</span><span>/</span><span>${escapeHtml(row.category_name || "文章")}</span>
+      <a href="/">首页</a><span>/</span><a href="/courses/">免费课程</a><span>/</span><span>${escapeHtml(row.category_name || "文章")}</span>
     </div>
     <div class="m-article-head">
       <div style="display:flex;gap:8px;align-items:center;"><span class="m-tag free">免费</span><span class="m-tag soon">${escapeHtml(
@@ -3212,6 +3281,8 @@ async function handlePublicLibrary(request, env, ctx, url) {
     ${attachmentHtml}
     ${chapterPanelsHtml}
     ${chapterFoot}
+    ${relatedHtml}
+    <p style="margin-top:28px;"><a class="btn btn-ghost btn-sm" href="/courses/">← 返回免费课程</a></p>
     <div class="m-note" style="margin-top:40px;">
       <span class="m-note-ico" aria-hidden="true">i</span>
       <div>这篇内容来自公开知识库。想系统学完 10 个模块，并获得工具与资料，可以了解会员权益：<a href="/member/" style="color:var(--orange-deep);">进入会员中心</a>。</div>
@@ -3228,7 +3299,7 @@ async function handlePublicLibrary(request, env, ctx, url) {
   </aside>
 </div>${chapterScript}`;
 
-  return new Response(publicShell({ title: row.title, description: row.excerpt || row.title, body }), {
+  return new Response(publicShell({ title: row.title, description: row.excerpt || row.title, path: requestPath(request), body }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
   });
 }
@@ -3250,8 +3321,8 @@ async function handlePublicCourseList(request, env) {
   const rows =
     (
       await env.DB.prepare(
-        `SELECT c.id, c.slug, c.title, c.excerpt, c.access_level, c.content_type,
-                c.sort_order, c.published_at, c.created_at, cat.name AS category_name
+        `SELECT c.id, c.slug, c.title, c.excerpt, c.cover_image, c.access_level, c.content_type,
+                c.sort_order, c.published_at, c.created_at, c.updated_at, cat.name AS category_name
            FROM contents c LEFT JOIN content_categories cat ON cat.id = c.category_id
           WHERE c.status = 'published' AND c.access_level = 'free'
           ORDER BY c.sort_order ASC, COALESCE(c.published_at, c.created_at) DESC, c.id DESC`
@@ -3259,34 +3330,44 @@ async function handlePublicCourseList(request, env) {
     ).results || [];
 
   const listHtml = rows.length
-    ? rows
-        .map((item, index) => {
-          const date = shortDate(item.published_at || item.created_at);
-          return `<div class="m-row">
-  <span class="m-row-num">${String(index + 1).padStart(2, "0")}</span>
-  <div class="m-row-main">
-    <a class="m-row-title" href="/library/${escapeHtml(item.slug)}/">${escapeHtml(item.title)} <span class="m-tag free">免费</span></a>
-    ${item.excerpt ? `<p class="m-row-desc">${escapeHtml(item.excerpt)}</p>` : ""}
-  </div>
-  <div class="m-row-meta"><span>${escapeHtml(item.category_name || uncategorizedLabel)}</span><span>${date}</span></div>
-  <span class="m-row-arrow" aria-hidden="true">→</span>
-</div>`;
+    ? `<div class="course-list-grid">${rows
+        .map((item) => {
+          const date = shortDate(item.updated_at || item.published_at || item.created_at);
+          const cover = item.cover_image
+            ? `<img src="${escapeHtml(item.cover_image)}" alt="${escapeHtml(item.title)}" loading="lazy">`
+            : `<span class="course-card-placeholder" aria-hidden="true">免费课程</span>`;
+          return `<a class="course-card" href="/library/${escapeHtml(item.slug)}/">
+  <span class="course-card-cover">${cover}</span>
+  <span class="course-card-body">
+    <span class="course-card-tags"><span class="m-tag free">免费</span><span class="m-tag soon">${escapeHtml(
+      item.category_name || uncategorizedLabel
+    )}</span></span>
+    <h2 class="course-card-title">${escapeHtml(item.title)}</h2>
+    ${item.excerpt ? `<span class="course-card-desc">${escapeHtml(item.excerpt)}</span>` : ""}
+    <span class="course-card-foot"><span class="course-card-date">更新 ${date}</span><span class="course-card-go">开始学习 →</span></span>
+  </span>
+</a>`;
         })
-        .join("")
-    : `<p style="color:var(--muted);font-size:13px;">暂时还没有发布免费课程，可以先去<a href="/guide/" style="color:var(--orange-deep);">独立站入门</a>栏目看看。</p>`;
+        .join("")}</div>`
+    : `<div class="home-empty">
+        <h2>暂时还没有发布免费课程</h2>
+        <p>免费课程正在整理中，可以先去<a href="/guide/">独立站入门</a>栏目看看。</p>
+      </div>`;
 
   const body = `
 <div class="m-page-head">
+  <span class="section-kicker">FREE COURSES</span>
   <h1 data-copy="public.courses.title">免费课程</h1>
   <p data-copy="public.courses.intro">不用注册、不用登录，付费课程与工具另有会员入口。这里只列出已发布的免费公开课程。</p>
+  ${rows.length ? `<p class="course-list-count">共 ${rows.length} 门免费课程 · 无需登录即可阅读</p>` : ""}
 </div>
-<div style="margin-top:24px;">${listHtml}</div>
+<div style="margin-top:28px;">${listHtml}</div>
 <div class="m-note" style="margin-top:36px;">
   <span class="m-note-ico" aria-hidden="true">i</span>
   <div>想系统学完 10 个模块，并获得网页工具与实操资料，可以<strong>凭专属访问码</strong>进入会员中心：<a href="/member/" style="color:var(--orange-deep);">了解会员权益</a>。</div>
 </div>`;
 
-  return new Response(publicShell({ title: "免费课程", description: "独立站春哥免费课程，无需登录即可阅读。", body }), {
+  return new Response(publicShell({ title: "免费课程", description: "独立站春哥免费课程，无需登录即可阅读。", path: requestPath(request), body }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
   });
 }
@@ -3366,7 +3447,7 @@ ${ctaTitle ? `<div class="m-note" style="margin-top:36px;">
   <div><strong>${escapeHtml(ctaTitle)}</strong>${ctaDesc ? `<br>${escapeHtml(ctaDesc)}` : ""}<br><a href="/member/" style="color:var(--orange-deep);">${escapeHtml(ctaButton)} →</a></div>
 </div>` : ""}`;
 
-  return new Response(publicShell({ title, description: desc, body }), {
+  return new Response(publicShell({ title, description: desc, path: requestPath(request), body }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
   });
 }
@@ -3382,6 +3463,7 @@ function caseCardHtml(item) {
   <span class="case-niche">${escapeHtml(item.category || "学员案例")}</span>
   <h3>${escapeHtml(item.title)}</h3>
   ${item.summary ? `<p class="case-quote">${escapeHtml(item.summary)}</p>` : ""}
+  <span class="case-card-go">查看案例 →</span>
 </a>`;
 }
 
@@ -3414,7 +3496,7 @@ async function handlePublicCaseList(request, env) {
 <div style="margin-top:24px;">${listHtml}</div>`;
 
   return new Response(
-    publicShell({ title: "学员案例", description: "独立站春哥学员案例，真实独立站实战复盘。", body }),
+    publicShell({ title: "学员案例", description: "独立站春哥学员案例，真实独立站实战复盘。", path: requestPath(request), body }),
     {
       headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
     }
@@ -3437,6 +3519,7 @@ async function handlePublicCaseDetail(request, env, url) {
       publicShell({
         title: "案例不存在",
         description: "案例不存在或尚未发布。",
+        path: requestPath(request),
         body: `<div class="m-page-head"><h1>案例不存在或尚未发布</h1><p>可以返回案例列表查看其他学员案例。</p></div><a class="btn btn-primary" href="/cases/"><span data-copy="public.cases.detail.back">返回学员案例</span></a>`,
       }),
       { status: 404, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS } }
@@ -3470,6 +3553,7 @@ async function handlePublicCaseDetail(request, env, url) {
         <span>更新 ${formatDate(row.updated_at)}</span>
       </div>
     </div>
+    ${row.summary ? `<p class="case-detail-summary">${escapeHtml(row.summary)}</p>` : ""}
     ${coverHtml}
     <article class="prose m-article-body">${rendered.html}</article>
     ${linkHtml}
@@ -3485,7 +3569,7 @@ async function handlePublicCaseDetail(request, env, url) {
   </aside>
 </div>`;
 
-  return new Response(publicShell({ title: row.title, description: row.summary || row.title, body }), {
+  return new Response(publicShell({ title: row.title, description: row.summary || row.title, path: requestPath(request), body }), {
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS },
   });
 }
@@ -5899,6 +5983,184 @@ async function handleToolPage(request, env, url) {
 }
 
 /* ------------------------------------------------------------------ */
+/* 第三阶段：公开页面统一渲染（页头页脚唯一来源 publicShell）            */
+/* ------------------------------------------------------------------ */
+
+const PUBLIC_HTML_HEADERS = { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...BASE_HEADERS };
+
+/** 通过 ASSETS 绑定读取静态文件文本（模板片段 / 配置 / 静态文章源文件） */
+async function fetchAssetText(env, request, pathname) {
+  if (!env.ASSETS) return null;
+  const assetUrl = new URL(request.url);
+  assetUrl.pathname = pathname;
+  assetUrl.search = "";
+  const res = await env.ASSETS.fetch(new Request(assetUrl.toString(), { method: "GET", headers: request.headers }));
+  if (!res.ok) return null;
+  return await res.text();
+}
+
+function extractMainHtml(html) {
+  const m = String(html || "").match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+  return m ? m[1] : null;
+}
+
+function extractArticleMeta(html) {
+  const t = String(html || "").match(/<title>([^<]*)<\/title>/i);
+  const d = String(html || "").match(/<meta\s+name="description"\s+content="([^"]*)"/i);
+  return {
+    title: t ? t[1].replace(/[｜|]\s*独立站春哥\s*$/, "").trim() : "知识文章",
+    description: d ? d[1] : "独立站春哥实战知识文章。",
+  };
+}
+
+/** 渲染独立站成长路线：阶段与内部学习内容全部来自配置，数量不写死 */
+function renderRoadmapStages(data) {
+  const esc = (v) => escapeHtml(v == null ? "" : v);
+  const stages = (data && Array.isArray(data.stages) ? data.stages : [])
+    .filter((s) => s && s.visible !== false && typeof s.name === "string" && s.name.trim())
+    .slice()
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+  if (!stages.length) {
+    return `<div class="home-empty reveal"><h3>成长路线整理中</h3><p>内容正在准备，可以先看看<a href="/courses/">免费课程</a>。</p></div>`;
+  }
+  const items = stages
+    .map((stage, index) => {
+      const topics = (Array.isArray(stage.topics) ? stage.topics : [])
+        .filter((t) => t && t.visible !== false && typeof t.name === "string" && t.name.trim())
+        .slice()
+        .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+      const topicsHtml = topics.length
+        ? `<ul class="roadmap-topics">${topics
+            .map(
+              (t) =>
+                `<li class="roadmap-topic"><b>${esc(t.name)}</b>${t.description ? `<span>${esc(t.description)}</span>` : ""}</li>`
+            )
+            .join("")}</ul>`
+        : "";
+      return `<li class="roadmap-stage reveal">
+        <div class="roadmap-stage-head">
+          <span class="roadmap-num">${String(index + 1).padStart(2, "0")}</span>
+          <div class="roadmap-stage-title">
+            <h3>${esc(stage.name)}</h3>
+            ${stage.summary ? `<p>${esc(stage.summary)}</p>` : ""}
+          </div>
+          <span class="tool-badge vip roadmap-vip">VIP 会员</span>
+        </div>
+        ${topicsHtml}
+      </li>`;
+    })
+    .join("");
+  return `<ol class="roadmap">${items}</ol>`;
+}
+
+function renderHomeCourses(rows) {
+  if (!rows.length) {
+    return `<div class="home-empty"><h3>免费课程整理中</h3><p>新的免费课程正在准备，可以先了解<a href="/#roadmap">独立站成长路线</a>。</p></div>`;
+  }
+  return `<div class="course-mini-grid">${rows
+    .map(
+      (r) => `<a class="course-mini" href="/library/${escapeHtml(r.slug)}/">
+        ${r.cover_image ? `<span class="course-mini-cover"><img src="${escapeHtml(r.cover_image)}" alt="" loading="lazy"></span>` : ""}
+        <span class="course-mini-body">
+          <b>${escapeHtml(r.title)}</b>
+          ${r.excerpt ? `<span class="course-mini-excerpt">${escapeHtml(r.excerpt)}</span>` : ""}
+          <span class="course-mini-meta">更新 ${formatDate(r.updated_at)}</span>
+        </span>
+      </a>`
+    )
+    .join("")}</div>`;
+}
+
+function renderHomeTools(rows) {
+  if (!rows.length) {
+    return `<div class="home-empty"><h3>工具正在整理中</h3><p>实操工具会陆续上线。</p></div>`;
+  }
+  return `<div class="tool-grid">${rows
+    .map((t) => {
+      const free = t.access_level === "free";
+      const href = t.entry_url || `/tools/${t.slug}/`;
+      return `<a class="tool-card" href="${escapeHtml(href)}">
+        <span class="tool-badge ${free ? "free" : "vip"}">${free ? "免费可用" : "VIP 会员"}</span>
+        <b>${escapeHtml(t.name)}</b>
+        ${t.intro ? `<span class="tool-intro">${escapeHtml(t.intro)}</span>` : ""}
+      </a>`;
+    })
+    .join("")}</div>`;
+}
+
+/** 首页：服务端渲染（统一外壳 + 动态板块），动态数据在服务端一次取齐 */
+async function handleHome(request, env) {
+  const [partial, roadmapRaw] = await Promise.all([
+    fetchAssetText(env, request, "/partials/home.html"),
+    fetchAssetText(env, request, "/data/roadmap.json"),
+  ]);
+  if (!partial) {
+    return new Response("页面不存在", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", ...BASE_HEADERS } });
+  }
+  let roadmapData = null;
+  try {
+    roadmapData = roadmapRaw ? JSON.parse(roadmapRaw) : null;
+  } catch {
+    roadmapData = null;
+  }
+  const [courses, tools] = await Promise.all([
+    env.DB.prepare(
+      `SELECT title, slug, cover_image, excerpt, updated_at FROM contents
+        WHERE status = 'published' AND access_level = 'free'
+        ORDER BY updated_at DESC, id DESC LIMIT 6`
+    ).all(),
+    env.DB.prepare(
+      `SELECT name, slug, intro, entry_url, access_level FROM tools
+        WHERE status = 'published' ORDER BY sort_order ASC, id ASC LIMIT 12`
+    ).all(),
+  ]);
+  const body = partial
+    .replace("<!--HOME_ROADMAP-->", renderRoadmapStages(roadmapData))
+    .replace("<!--HOME_COURSES-->", renderHomeCourses(courses.results || []))
+    .replace("<!--HOME_TOOLS-->", renderHomeTools(tools.results || []));
+  return new Response(
+    publicShell({
+      title: "独立站实战与一对一带教",
+      description:
+        "春哥独立站实战平台：免费实战课程、实操工具与一对一实战带教，覆盖选品验证、独立站搭建、社媒获客、广告投放、SEO 与订单转化全流程。",
+      path: "/",
+      body,
+      bare: true,
+    }),
+    { headers: PUBLIC_HTML_HEADERS }
+  );
+}
+
+/** 关于春哥 / 一对一带教：静态片段 + 公共外壳 */
+async function renderPartialPage(request, env, { asset, title, description }) {
+  const partial = await fetchAssetText(env, request, asset);
+  if (!partial) {
+    return new Response("页面不存在", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", ...BASE_HEADERS } });
+  }
+  return new Response(publicShell({ title, description, path: requestPath(request), body: partial }), { headers: PUBLIC_HTML_HEADERS });
+}
+
+/** 静态知识文章：正文仍维护在原静态文件，页头页脚统一由 publicShell 渲染 */
+async function renderArticlePage(request, env, pathname) {
+  const html = await fetchAssetText(env, request, pathname);
+  const main = html && extractMainHtml(html);
+  if (!main) {
+    return new Response("页面不存在", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8", ...BASE_HEADERS } });
+  }
+  const meta = extractArticleMeta(html);
+  return new Response(publicShell({ title: meta.title, description: meta.description, path: pathname, body: main, bare: true }), {
+    headers: PUBLIC_HTML_HEADERS,
+  });
+}
+
+const STATIC_ARTICLE_PATHS = new Set([
+  "/guide/90-day-roadmap.html",
+  "/products/validation.html",
+  "/build/shopify-day-one.html",
+  "/marketing/first-ad.html",
+]);
+
+/* ------------------------------------------------------------------ */
 /* 入口                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -5933,6 +6195,33 @@ async function handleRequest(request, env, ctx, url) {
       }
       if (url.pathname === "/marketing" || url.pathname === "/marketing/") {
         return await handleNavSection(request, env, "marketing");
+      }
+
+      // 第三阶段：首页服务端渲染（统一页头页脚 + 动态板块）
+      if (url.pathname === "/") {
+        return await handleHome(request, env);
+      }
+      if (url.pathname === "/index.html") {
+        return Response.redirect(url.origin + "/", 301);
+      }
+      // 关于春哥 / 一对一实战带教
+      if (url.pathname === "/about" || url.pathname === "/about/") {
+        return await renderPartialPage(request, env, {
+          asset: "/partials/about.html",
+          title: "关于春哥",
+          description: "关于春哥：专注独立站（DTC 出海）实战，提供免费课程、实操工具与一对一实战带教。",
+        });
+      }
+      if (url.pathname === "/coaching" || url.pathname === "/coaching/") {
+        return await renderPartialPage(request, env, {
+          asset: "/partials/coaching.html",
+          title: "一对一实战带教",
+          description: "一对一实战带教：结合你的产品、项目基础和进度，把独立站从 0 到 1 真正做出来。",
+        });
+      }
+      // 静态知识文章统一套公共外壳（正文仍维护在各自静态文件）
+      if (STATIC_ARTICLE_PATHS.has(url.pathname)) {
+        return await renderArticlePage(request, env, url.pathname);
       }
 
       // 兼容 /courses/<slug>/ 写法，统一跳到公开详情页
@@ -6037,3 +6326,6 @@ export default {
     }
   },
 };
+
+// 供自动化测试直接验证两级动态结构的渲染逻辑（不影响运行时行为）
+export { renderRoadmapStages };

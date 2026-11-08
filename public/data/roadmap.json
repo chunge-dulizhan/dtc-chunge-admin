@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "updated_at": "2026-11-08",
+  "stages": [
+    {
+      "id": "s1",
+      "name": "产品与市场验证",
+      "summary": "先确认市场有真实需求，再决定做什么产品，避免凭感觉选品。",
+      "order": 1,
+      "visible": true,
+      "topics": [
+        { "id": "s1-t1", "name": "市场需求研究", "description": "用数据判断细分市场是否存在稳定需求。", "order": 1, "visible": true },
+        { "id": "s1-t2", "name": "产品筛选", "description": "按需求、竞争和供应链条件筛出候选产品。", "order": 2, "visible": true },
+        { "id": "s1-t3", "name": "竞品分析", "description": "拆解竞品的定位、价格和获客方式。", "order": 3, "visible": true },
+        { "id": "s1-t4", "name": "定价与利润测算", "description": "算清成本结构，确定可持续的定价区间。", "order": 4, "visible": true },
+        { "id": "s1-t5", "name": "产品卖点提炼", "description": "把产品差异转化为买家能理解的卖点。", "order": 5, "visible": true }
+      ]
+    },
+    {
+      "id": "s2",
+      "name": "独立站搭建与转化准备",
+      "summary": "把验证过的产品落到自己的网站上，并完成收款和数据基础配置。",
+      "order": 2,
+      "visible": true,
+      "topics": [
+        { "id": "s2-t1", "name": "Shopify 建站", "description": "完成店铺基础搭建与核心设置。", "order": 1, "visible": true },
+        { "id": "s2-t2", "name": "首页、产品页、集合页", "description": "按转化逻辑搭建三类关键页面。", "order": 2, "visible": true },
+        { "id": "s2-t3", "name": "支付方式配置", "description": "打通目标市场可用的收款方式。", "order": 3, "visible": true },
+        { "id": "s2-t4", "name": "物流与退换货政策", "description": "明确发货、运费与售后规则并写清楚。", "order": 4, "visible": true },
+        { "id": "s2-t5", "name": "域名、GA4、Meta Pixel", "description": "完成域名绑定与数据追踪基础配置。", "order": 5, "visible": true },
+        { "id": "s2-t6", "name": "手机端页面检查", "description": "确保移动端浏览与下单流程顺畅。", "order": 6, "visible": true }
+      ]
+    },
+    {
+      "id": "s3",
+      "name": "社媒内容获客",
+      "summary": "用持续的内容产出获取第一批免费流量和真实用户反馈。",
+      "order": 3,
+      "visible": true,
+      "topics": [
+        { "id": "s3-t1", "name": "TikTok 内容运营", "description": "建立账号并开始稳定发布内容。", "order": 1, "visible": true },
+        { "id": "s3-t2", "name": "Instagram Reels", "description": "用短视频形式触达目标人群。", "order": 2, "visible": true },
+        { "id": "s3-t3", "name": "Facebook 页面运营", "description": "搭建品牌主页并积累内容资产。", "order": 3, "visible": true },
+        { "id": "s3-t4", "name": "产品视频拍摄", "description": "掌握低成本可批量产出的拍法。", "order": 4, "visible": true },
+        { "id": "s3-t5", "name": "内容选题与脚本", "description": "建立选题库和可复用的脚本结构。", "order": 5, "visible": true },
+        { "id": "s3-t6", "name": "内容发布与数据复盘", "description": "按数据反馈迭代内容方向。", "order": 6, "visible": true }
+      ]
+    },
+    {
+      "id": "s4",
+      "name": "付费广告获客",
+      "summary": "在内容验证有效的基础上，用广告放大流量并控制成本。",
+      "order": 4,
+      "visible": true,
+      "topics": [
+        { "id": "s4-t1", "name": "Meta 广告账户搭建", "description": "完成商务管理平台与广告账户配置。", "order": 1, "visible": true },
+        { "id": "s4-t2", "name": "Pixel 与事件追踪", "description": "确保转化数据可以被准确记录。", "order": 2, "visible": true },
+        { "id": "s4-t3", "name": "广告素材制作", "description": "制作符合投放要求的图片与视频素材。", "order": 3, "visible": true },
+        { "id": "s4-t4", "name": "广告系列与广告组设置", "description": "按目标搭建合理的账户结构。", "order": 4, "visible": true },
+        { "id": "s4-t5", "name": "受众测试", "description": "用小预算测试不同受众的反应。", "order": 5, "visible": true },
+        { "id": "s4-t6", "name": "CTR、CPC、CPM、CPA 分析", "description": "读懂核心指标并据此判断广告质量。", "order": 6, "visible": true },
+        { "id": "s4-t7", "name": "广告优化与预算控制", "description": "按数据调整素材、受众与预算分配。", "order": 7, "visible": true }
+      ]
+    },
+    {
+      "id": "s5",
+      "name": "SEO 与订单转化",
+      "summary": "沉淀长期免费流量，并把流量稳定转化为订单和口碑。",
+      "order": 5,
+      "visible": true,
+      "topics": [
+        { "id": "s5-t1", "name": "Google Search Console", "description": "监控网站在搜索中的表现与收录。", "order": 1, "visible": true },
+        { "id": "s5-t2", "name": "关键词研究", "description": "找到有搜索量且可竞争的关键词。", "order": 2, "visible": true },
+        { "id": "s5-t3", "name": "产品页 SEO", "description": "让产品页获得精准搜索流量。", "order": 3, "visible": true },
+        { "id": "s5-t4", "name": "集合页 SEO", "description": "用集合页承接品类关键词。", "order": 4, "visible": true },
+        { "id": "s5-t5", "name": "内容 SEO", "description": "通过内容持续获取长尾流量。", "order": 5, "visible": true },
+        { "id": "s5-t6", "name": "页面转化优化", "description": "按数据优化页面提升下单率。", "order": 6, "visible": true },
+        { "id": "s5-t7", "name": "订单处理、物流发货、客户服务", "description": "跑通履约与售后，形成完整闭环。", "order": 7, "visible": true }
+      ]
+    }
+  ]
+}

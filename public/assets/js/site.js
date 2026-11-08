@@ -224,6 +224,7 @@
               '<span class="case-niche">' + escCase(item.category || "学员案例") + "</span>" +
               "<h3>" + escCase(item.title) + "</h3>" +
               (item.summary ? '<p class="case-quote">' + escCase(item.summary) + "</p>" : "") +
+              '<span class="case-card-go">查看案例 →</span>' +
               "</a>"
             );
           })
